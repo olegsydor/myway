@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import get_settings
 
+from app.models import User  # noqa: F401
+from app.models.base import Base
+
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -18,8 +22,19 @@ config.set_main_option(
     settings.database_url,
 )
 
-target_metadata = None
+target_metadata = Base.metadata
 
+def include_object(
+    object,
+    name,
+    type_,
+    reflected,
+    compare_to,
+):
+    if type_ == "table" and name == "persistence_test":
+        return False
+
+    return True
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -29,6 +44,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -39,6 +55,7 @@ def do_run_migrations(connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
+        include_object=include_object,   
     )
 
     with context.begin_transaction():
