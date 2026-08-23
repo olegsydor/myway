@@ -1,5 +1,5 @@
 from app.schemas.edge import EdgeCreate, EdgeRead
-from app.schemas.node import NodeCreate, NodeRead
+from app.schemas.node import NodeCreate, NodeRead, NodeUpdate
 from app.schemas.user import UserCreate, UserRead
 
 __all__ = [
@@ -7,6 +7,7 @@ __all__ = [
     "EdgeRead",
     "NodeCreate",
     "NodeRead",
+    "NodeUpdate",
     "UserCreate",
     "UserRead",
 ]

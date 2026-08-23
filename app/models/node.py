@@ -77,6 +77,7 @@ class Node(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("clock_timestamp()"),
+        onupdate=text("clock_timestamp()"),
     )
 
     user: Mapped["User"] = relationship(

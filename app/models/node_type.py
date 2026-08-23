@@ -32,7 +32,3 @@ class NodeType(Base):
     back_populates="node_type",
 )
 
-    nodes = relationship(
-    "Node",
-    back_populates="node_type",
-    )
