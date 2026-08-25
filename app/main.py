@@ -3,6 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.routers.nodes import router as nodes_router
 from app.routers.edges import router as edges_router
+from app.routers.graph import router as graph_router
 
 from app.core.config import get_settings
 from app.core.database import get_db_session
@@ -15,6 +16,7 @@ app = FastAPI(
 )
 app.include_router(edges_router)
 app.include_router(nodes_router)
+app.include_router(graph_router)
 
 @app.get("/health")
 async def health(
