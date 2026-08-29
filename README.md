@@ -107,3 +107,25 @@ the API image:
 ```bash
 docker compose up -d --build api
 ```
+
+
+## Graph visualization
+
+The frontend graph visualization stack selected in Stage 5 is:
+
+- React Flow 12.11.5
+- @dagrejs/dagre 3.1.1
+
+The decision was based on the real `GET /graph` format, realistic
+directed graph topology, product interaction scenarios, visual
+readability, TypeScript and React integration, bundle size, and
+performance testing.
+
+Cytoscape.js with cytoscape-dagre is retained as the reserve candidate.
+Sigma.js with Graphology and vis-network were evaluated and rejected as
+the primary renderer.
+
+The PoC and all rejected candidates remain under:
+
+```text
+poc/graph-visualization
