@@ -1,0 +1,28 @@
+.my-way-edge__interaction {
+  cursor: pointer;
+}
+
+.my-way-edge__tooltip {
+  position: absolute;
+  z-index: 1000;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 10px 12px;
+  color: #111827;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  pointer-events: none;
+}
+
+.my-way-edge__description {
+  margin-bottom: 8px;
+}
+
+.my-way-edge__attributes {
+  display: grid;
+  gap: 3px;
+}

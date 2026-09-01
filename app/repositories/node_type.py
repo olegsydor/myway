@@ -16,3 +16,13 @@ async def get_node_type_by_id(
     )
 
     return result.scalar_one_or_none()
+
+
+async def get_node_types(
+    session: AsyncSession,
+) -> list[NodeType]:
+    result = await session.execute(
+        select(NodeType).order_by(NodeType.id)
+    )
+
+    return list(result.scalars().all())

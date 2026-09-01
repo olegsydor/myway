@@ -109,23 +109,46 @@ docker compose up -d --build api
 ```
 
 
-## Graph visualization
+## Graph frontend
 
-The frontend graph visualization stack selected in Stage 5 is:
+The frontend graph stack selected in Stage 5 is:
 
 - React Flow 12.11.5
 - @dagrejs/dagre 3.1.1
 
-The decision was based on the real `GET /graph` format, realistic
-directed graph topology, product interaction scenarios, visual
-readability, TypeScript and React integration, bundle size, and
-performance testing.
+The React Flow frontend supports graph visualization and the basic
+graph-editing workflow implemented in Stage 6:
 
-Cytoscape.js with cytoscape-dagre is retained as the reserve candidate.
-Sigma.js with Graphology and vis-network were evaluated and rejected as
-the primary renderer.
+- create, edit, and delete Nodes
+- create, edit, and delete directed Edges
+- Node and Edge descriptions and properties
+- searchable Node selection
+- Grid, Circle, and Dagre layouts
+- Node/type search and filtering
+- directed path search and highlighting
 
-The PoC and all rejected candidates remain under:
+The backend remains the source of truth. After successful graph
+mutations, the frontend reloads the canonical graph through `GET /graph`.
 
-```text
+Node deletion does not cascade to connected Edges. Connected Edges must
+be explicitly deleted first.
+
+Duplicate directed Edges with the same source, target, and Edge type are
+not allowed.
+
+Cytoscape.js with cytoscape-dagre is retained as the reserve renderer.
+Sigma.js with Graphology and vis-network were evaluated in Stage 5 and
+rejected as primary renderers.
+
+The frontend and evaluated renderer implementations are under:
+
+```text id="89dcf2"
 poc/graph-visualization
+```
+
+Detailed stage documentation:
+
+```text id="w66b45"
+docs/stage-5.md
+docs/stage-6.md
+```

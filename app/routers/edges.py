@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db_session
 from app.dependencies.auth import get_current_user
@@ -42,15 +43,26 @@ async def create_edge_endpoint(
             detail="Edge type not found",
         )
 
-    edge = await create_edge(
-        session,
-        user_id=current_user.id,
-        source_node_id=data.source_node_id,
-        target_node_id=data.target_node_id,
-        edge_type_id=data.edge_type_id,
-        description=data.description,
-        properties=data.properties,
-    )
+    try:
+        edge = await create_edge(
+            session,
+            user_id=current_user.id,
+            source_node_id=data.source_node_id,
+            target_node_id=data.target_node_id,
+            edge_type_id=data.edge_type_id,
+            description=data.description,
+            properties=data.properties,
+        )
+    except IntegrityError as exc:
+        await session.rollback()
+
+        if "uq_edges_user_source_target_type" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Edge already exists",
+            ) from exc
+
+        raise
 
     if edge is None:
         raise HTTPException(
@@ -130,11 +142,22 @@ async def update_edge_endpoint(
                 detail="Edge type not found",
             )
 
-    updated_edge = await update_edge(
-        session,
-        edge=edge,
-        data=data.model_dump(exclude_unset=True),
-    )
+    try:
+        updated_edge = await update_edge(
+            session,
+            edge=edge,
+            data=data.model_dump(exclude_unset=True),
+        )
+    except IntegrityError as exc:
+        await session.rollback()
+
+        if "uq_edges_user_source_target_type" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Edge already exists",
+            ) from exc
+
+        raise
 
     if updated_edge is None:
         raise HTTPException(

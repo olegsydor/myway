@@ -35,6 +35,9 @@ const NODE_COLORS: Record<string, string> = {
   skill: '#10b981',
   place: '#f59e0b',
   event: '#8b5cf6',
+  organization: '#475569',
+  project: '#06b6d4',
+  hobby: '#b45309',
 }
 
 export function toReactFlowElements(
@@ -45,6 +48,7 @@ export function toReactFlowElements(
   const nodes: ReactFlowNode[] = graph.nodes.map(
     (node, index) => ({
       id: `n-${node.id}`,
+      type: 'myWay',
       position: {
         x: (index % columns) * 180,
         y: Math.floor(index / columns) * 100,
@@ -72,6 +76,7 @@ export function toReactFlowElements(
 
   const edges: ReactFlowEdge[] = graph.edges.map((edge) => ({
     id: `e-${edge.id}`,
+    type: 'myWay',
     source: `n-${edge.source}`,
     target: `n-${edge.target}`,
     label: edge.type,

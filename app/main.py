@@ -5,8 +5,12 @@ from app.routers.nodes import router as nodes_router
 from app.routers.edges import router as edges_router
 from app.routers.graph import router as graph_router
 
+from app.routers.node_types import router as node_types_router
+from app.routers.edge_types import router as edge_types_router
+
 from app.core.config import get_settings
 from app.core.database import get_db_session
+
 
 settings = get_settings()
 
@@ -17,6 +21,8 @@ app = FastAPI(
 app.include_router(edges_router)
 app.include_router(nodes_router)
 app.include_router(graph_router)
+app.include_router(node_types_router)
+app.include_router(edge_types_router)
 
 @app.get("/health")
 async def health(

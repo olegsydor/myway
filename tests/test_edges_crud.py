@@ -291,6 +291,80 @@ async def test_update_edge(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_update_edge_to_duplicate_returns_409(
+    client,
+    db_session,
+):
+    user = User(
+        email="update-duplicate-edge@example.com",
+        display_name="Update Duplicate Edge User",
+    )
+    node_type = NodeType(
+        code="person",
+        name="Person",
+    )
+    edge_type = EdgeType(
+        code="knows",
+        name="Knows",
+    )
+
+    db_session.add_all([user, node_type, edge_type])
+    await db_session.flush()
+
+    node1 = Node(
+        user_id=user.id,
+        node_type_id=node_type.id,
+        display_name="Node One",
+    )
+    node2 = Node(
+        user_id=user.id,
+        node_type_id=node_type.id,
+        display_name="Node Two",
+    )
+    node3 = Node(
+        user_id=user.id,
+        node_type_id=node_type.id,
+        display_name="Node Three",
+    )
+
+    db_session.add_all([node1, node2, node3])
+    await db_session.flush()
+
+    edge1 = Edge(
+        user_id=user.id,
+        source_node_id=node1.id,
+        target_node_id=node2.id,
+        edge_type_id=edge_type.id,
+    )
+    edge2 = Edge(
+        user_id=user.id,
+        source_node_id=node1.id,
+        target_node_id=node3.id,
+        edge_type_id=edge_type.id,
+    )
+
+    db_session.add_all([edge1, edge2])
+    await db_session.commit()
+
+    original_user_id = auth.TEST_USER_ID
+    auth.TEST_USER_ID = user.id
+
+    try:
+        response = await client.patch(
+            f"/edges/{edge2.id}",
+            json={
+                "target_node_id": node2.id,
+            },
+        )
+    finally:
+        auth.TEST_USER_ID = original_user_id
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Edge already exists",
+    }
+
+@pytest.mark.asyncio
 async def test_delete_edge(client, db_session):
     user = User(
         email="delete-edge@example.com",
@@ -521,7 +595,7 @@ async def test_self_loop_is_allowed(
 
 
 @pytest.mark.asyncio
-async def test_duplicate_edges_are_allowed(
+async def test_duplicate_edges_return_409(
     client,
     db_session,
 ):
@@ -580,9 +654,10 @@ async def test_duplicate_edges_are_allowed(
         auth.TEST_USER_ID = original_user_id
 
     assert response1.status_code == 201
-    assert response2.status_code == 201
-
-    assert response1.json()["id"] != response2.json()["id"]
+    assert response2.status_code == 409
+    assert response2.json() == {
+        "detail": "Edge already exists",
+    }
 
 
 @pytest.mark.asyncio

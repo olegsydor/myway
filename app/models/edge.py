@@ -31,6 +31,13 @@ class Edge(Base):
             "id",
             name="uq_edges_user_id_id",
         ),
+        UniqueConstraint(
+            "user_id",
+            "source_node_id",
+            "target_node_id",
+            "edge_type_id",
+            name="uq_edges_user_source_target_type",
+        ),
         ForeignKeyConstraint(
             ["user_id", "source_node_id"],
             ["nodes.user_id", "nodes.id"],
@@ -103,7 +110,6 @@ class Edge(Base):
     )
 
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
         nullable=False,
         server_default=text("clock_timestamp()"),
         onupdate=text("clock_timestamp()"),

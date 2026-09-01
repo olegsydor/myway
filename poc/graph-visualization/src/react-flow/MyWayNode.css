@@ -1,0 +1,82 @@
+.my-way-node {
+  position: relative;
+  width: 100%;
+}
+
+.my-way-node__label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-way-node__type {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.my-way-node__tooltip {
+  position: absolute;
+  z-index: 1000;
+
+  top: 50%;
+  transform: translateY(-50%);
+
+  min-width: 200px;
+  max-width: 320px;
+
+  padding: 10px 12px;
+
+  color: #111827;
+  background: #ffffff;
+
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+
+  transition:
+    opacity 120ms ease,
+    visibility 120ms ease;
+
+  .my-way-node__tooltip--right {
+    left: calc(100% + 12px);
+  }
+
+  .my-way-node__tooltip--left {
+    right: calc(100% + 12px);
+  }
+}
+
+.my-way-node:hover .my-way-node__tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.my-way-node__description {
+  margin-bottom: 8px;
+}
+
+.my-way-node__attributes {
+  display: grid;
+  gap: 3px;
+}
+
+.react-flow__node:hover {
+  z-index: 1000 !important;
+}
+
+.my-way-node__tooltip--right {
+  left: calc(100% + 12px);
+}
+
+.my-way-node__tooltip--left {
+  right: calc(100% + 12px);
+}

@@ -16,3 +16,13 @@ async def get_edge_type_by_id(
     )
 
     return result.scalar_one_or_none()
+
+
+async def get_edge_types(
+    session: AsyncSession,
+) -> list[EdgeType]:
+    result = await session.execute(
+        select(EdgeType).order_by(EdgeType.id)
+    )
+
+    return list(result.scalars().all())

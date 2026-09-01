@@ -77,10 +77,7 @@ function App() {
     const startedAt = performance.now()
 
     try {
-      const graphData = await fetchGraph()
-
-      setGraph(graphData)
-      setSource('GET /graph')
+      await refreshGraph()
       setPreparationMs(performance.now() - startedAt)
     } catch (loadError) {
       setError(
@@ -91,6 +88,13 @@ function App() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  async function refreshGraph() {
+    const graphData = await fetchGraph()
+
+    setGraph(graphData)
+    setSource('GET /graph')
   }
 
   function handleGenerateGraph() {
@@ -117,6 +121,8 @@ function App() {
     setSource(preset.label)
     setPreparationMs(performance.now() - startedAt)
   }
+
+
 
   return (
     <div className="app">
@@ -290,7 +296,10 @@ function App() {
               )}
 
               {candidate === 'react-flow' && (
-                <ReactFlowGraph graph={graph} />
+                <ReactFlowGraph
+                  graph={graph}
+                  onGraphChanged={refreshGraph}
+                />
               )}
 
               {candidate === 'vis-network' && (
