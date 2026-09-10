@@ -1,9 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useMemo,
-  useState,
-} from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 
 import './App.css'
 import { fetchGraph } from './shared/api'
@@ -62,6 +57,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [candidate, setCandidate] =
     useState<GraphCandidate>('cytoscape')
+
   const topologyMetrics = useMemo(
   () =>
     graph === null
@@ -96,6 +92,30 @@ function App() {
     setGraph(graphData)
     setSource('GET /graph')
   }
+
+  useEffect(() => {
+    async function loadInitialGraph() {
+      try {
+        setIsLoading(true)
+        setError(null)
+
+        const graphData = await fetchGraph()
+
+        setGraph(graphData)
+        setSource('GET /graph')
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Failed to load graph',
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadInitialGraph()
+  }, [])
 
   function handleGenerateGraph() {
     setError(null)
