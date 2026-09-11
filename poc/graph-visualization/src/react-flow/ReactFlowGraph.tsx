@@ -13,7 +13,13 @@ import {
 
 import { Graph, layout as dagreLayout } from "@dagrejs/dagre";
 
-import { findDirectedPath } from "../shared/graphAlgorithms";
+import {
+  findDirectedPath,
+  findPathsToStart,
+  findUnconnectedNodeIds,
+} from "../shared/graphAlgorithms";
+
+import type { GraphSearchResult } from "../shared/graphSearch";
 
 import "@xyflow/react/dist/style.css";
 
@@ -36,6 +42,8 @@ import {
 
 import type { EdgeType, GraphResponse, NodeType } from "../shared/types";
 import { NodeSearchSelect } from './NodeSearchSelect'
+
+import { GraphSearchPanel } from "./GraphSearchPanel";
 
 import { MyWayNode } from "./MyWayNode";
 import { MyWayEdge } from "./MyWayEdge";
@@ -205,8 +213,9 @@ export function ReactFlowGraph({
     layoutMs: null,
   });
 
-  const [nodeSearch, setNodeSearch] = useState("");
+
   const [selectedNodeType, setSelectedNodeType] = useState("all");
+  const [selectedEdgeType, setSelectedEdgeType] = useState("all");
 
   const [pathStart, setPathStart] = useState("");
   const [pathEnd, setPathEnd] = useState("");
@@ -230,6 +239,9 @@ export function ReactFlowGraph({
   const [isDeletingEdge, setIsDeletingEdge] = useState(false);
   const nodeTypes = [
     ...new Set(graphData.nodes.map((node) => node.type)),
+  ].sort();
+  const edgeTypes = [
+    ...new Set(graphData.edges.map((edge) => edge.type)),
   ].sort();
 
   const resetHighlighting = useCallback(() => {
@@ -296,6 +308,8 @@ export function ReactFlowGraph({
   }
 
   function restoreAllElements() {
+    setSelectedNodeType("all");
+    setSelectedEdgeType("all");
     setNodes((currentNodes) =>
       currentNodes.map((node) => ({
         ...node,
@@ -504,94 +518,105 @@ export function ReactFlowGraph({
     [graphData.edges, availableEdgeTypes, setEdges, setNodes],
   );
 
-  function handleFindNode() {
-    const searchValue = nodeSearch.trim();
+  function handleSearchResult(result: GraphSearchResult) {
+    const selectedNodeIds =
+      result.kind === "node"
+        ? new Set([`n-${result.id}`])
+        : new Set([`n-${result.source}`, `n-${result.target}`]);
 
-    if (!searchValue) {
-      setActionMessage("Enter a Node ID or label");
-      return;
-    }
-
-    const normalizedSearch = searchValue.toLowerCase();
-
-    const matchingNode = graphData.nodes.find(
-      (node) =>
-        String(node.id) === searchValue ||
-        node.label.toLowerCase().includes(normalizedSearch),
-    );
-
-    if (!matchingNode) {
-      setActionMessage(`Node not found: ${searchValue}`);
-      return;
-    }
-
-    const flowNodeId = `n-${matchingNode.id}`;
+    const selectedEdgeId =
+      result.kind === "edge" ? `e-${result.id}` : null;
 
     setSelectedNodeType("all");
+    setSelectedEdgeType("all");
+    setSelectedNodeForEdit(null);
+    setSelectedEdgeForEdit(null);
 
     setNodes((currentNodes) =>
-      currentNodes.map((node) => ({
-        ...node,
-        hidden: false,
-        selected: node.id === flowNodeId,
-        style: {
-          ...node.style,
-          opacity: 1,
-          border:
-            node.id === flowNodeId ? "3px solid #ef4444" : "2px solid #ffffff",
-        },
-      })),
+      currentNodes.map((node) => {
+        const isSelectedNode =
+          result.kind === "node" && selectedNodeIds.has(node.id);
+
+        const isEndpoint =
+          result.kind === "edge" && selectedNodeIds.has(node.id);
+
+        return {
+          ...node,
+          hidden: false,
+          selected: isSelectedNode,
+          style: {
+            ...node.style,
+            opacity: 1,
+            border: isSelectedNode
+              ? "3px solid #ef4444"
+              : isEndpoint
+                ? "3px solid #f59e0b"
+                : "2px solid #ffffff",
+          },
+        };
+      }),
     );
 
     setEdges((currentEdges) =>
-      currentEdges.map((edge) => ({
-        ...edge,
-        hidden: false,
-        selected: false,
-        style: {
-          ...edge.style,
-          opacity: 1,
-          stroke: "#94a3b8",
-          strokeWidth: 2,
-        },
-        markerEnd:
-          typeof edge.markerEnd === "object"
-            ? {
-                ...edge.markerEnd,
-                color: "#94a3b8",
-              }
-            : edge.markerEnd,
-      })),
+      currentEdges.map((edge) => {
+        const isSelectedEdge = edge.id === selectedEdgeId;
+
+        return {
+          ...edge,
+          hidden: false,
+          selected: isSelectedEdge,
+          style: {
+            ...edge.style,
+            opacity: 1,
+            stroke: isSelectedEdge ? "#ef4444" : "#94a3b8",
+            strokeWidth: isSelectedEdge ? 4 : 2,
+          },
+          markerEnd:
+            typeof edge.markerEnd === "object"
+              ? {
+                  ...edge.markerEnd,
+                  color: isSelectedEdge ? "#ef4444" : "#94a3b8",
+                }
+              : edge.markerEnd,
+        };
+      }),
     );
 
-    setSelectedElement(`Node: ${matchingNode.label}`);
+    if (result.kind === "node") {
+      const flowNodeId = `n-${result.id}`;
 
-    setActionMessage(`Found Node ${matchingNode.id}: ${matchingNode.label}`);
+      setSelectedElement(`Node: ${result.title}`);
+      setActionMessage(`Found ${result.detail}`);
 
-    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const instance = instanceRef.current;
-        const flowNode = instance?.getNode(flowNodeId);
+        requestAnimationFrame(() => {
+          const instance = instanceRef.current;
+          const flowNode = instance?.getNode(flowNodeId);
 
-        if (!instance || !flowNode) {
-          return;
-        }
+          if (!instance || !flowNode) {
+            return;
+          }
 
-        void instance.setCenter(
-          flowNode.position.x + NODE_WIDTH / 2,
-          flowNode.position.y + NODE_HEIGHT / 2,
-          {
-            zoom: 1.5,
-            duration: 300,
-          },
-        );
+          void instance.setCenter(
+            flowNode.position.x + NODE_WIDTH / 2,
+            flowNode.position.y + NODE_HEIGHT / 2,
+            {
+              zoom: 1.5,
+              duration: 300,
+            },
+          );
+        });
       });
-    });
+
+      return;
+    }
+
+    setSelectedElement(`Edge: ${result.title}`);
+    setActionMessage(`Found ${result.detail}`);
+    fitNodeIds(selectedNodeIds);
   }
 
-  function handleNodeTypeFilter(nodeType: string) {
-    setSelectedNodeType(nodeType);
-
+  function applyTypeFilters(nodeType: string, edgeType: string) {
     const visibleNodeIds = new Set(
       graphData.nodes
         .filter((node) => nodeType === "all" || node.type === nodeType)
@@ -613,12 +638,15 @@ export function ReactFlowGraph({
 
     setEdges((currentEdges) =>
       currentEdges.map((edge) => {
-        const visible =
+        const endpointsVisible =
           visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
+
+        const typeVisible =
+          edgeType === "all" || edge.data?.edgeType === edgeType;
 
         return {
           ...edge,
-          hidden: !visible,
+          hidden: !endpointsVisible || !typeVisible,
           selected: false,
           style: {
             ...edge.style,
@@ -639,13 +667,29 @@ export function ReactFlowGraph({
 
     setSelectedElement("None");
 
-    setActionMessage(
-      nodeType === "all"
-        ? "Showing all Node types"
-        : `Showing only type: ${nodeType}`,
-    );
+    if (nodeType === "all" && edgeType === "all") {
+      setActionMessage("Showing all Node and Edge types");
+    } else {
+      const nodeMessage =
+        nodeType === "all" ? "all Node types" : `Node type: ${nodeType}`;
+
+      const edgeMessage =
+        edgeType === "all" ? "all Edge types" : `Edge type: ${edgeType}`;
+
+      setActionMessage(`Showing ${nodeMessage}; ${edgeMessage}`);
+    }
 
     fitNodeIds(visibleNodeIds);
+  }
+
+  function handleNodeTypeFilter(nodeType: string) {
+    setSelectedNodeType(nodeType);
+    applyTypeFilters(nodeType, selectedEdgeType);
+  }
+
+  function handleEdgeTypeFilter(edgeType: string) {
+    setSelectedEdgeType(edgeType);
+    applyTypeFilters(selectedNodeType, edgeType);
   }
 
   async function handleUpdateEdge() {
@@ -733,6 +777,186 @@ export function ReactFlowGraph({
     }
   }
 
+  function handleShowFreeNodes() {
+    const freeNodeIds = new Set(
+      findUnconnectedNodeIds(graphData).map(
+        (nodeId) => `n-${nodeId}`,
+      ),
+    );
+
+    setSelectedNodeType("all");
+    setSelectedEdgeType("all");
+    setSelectedNodeForEdit(null);
+    setSelectedEdgeForEdit(null);
+
+    if (freeNodeIds.size === 0) {
+      restoreAllElements();
+      setActionMessage("No free Nodes found");
+      return;
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        const isFreeNode = freeNodeIds.has(node.id);
+
+        return {
+          ...node,
+          hidden: false,
+          selected: false,
+          style: {
+            ...node.style,
+            opacity: isFreeNode ? 1 : 0.08,
+            border: isFreeNode
+              ? "4px solid #16a34a"
+              : "2px solid #ffffff",
+          },
+        };
+      }),
+    );
+
+    setEdges((currentEdges) =>
+      currentEdges.map((edge) => ({
+        ...edge,
+        hidden: false,
+        selected: false,
+        style: {
+          ...edge.style,
+          opacity: 0.08,
+          stroke: "#cbd5e1",
+          strokeWidth: 1,
+        },
+        markerEnd:
+          typeof edge.markerEnd === "object"
+            ? {
+                ...edge.markerEnd,
+                color: "#cbd5e1",
+              }
+            : edge.markerEnd,
+      })),
+    );
+
+    setSelectedElement(`Free Nodes: ${freeNodeIds.size}`);
+
+    setActionMessage(
+      `${freeNodeIds.size} free Node${freeNodeIds.size === 1 ? "" : "s"} found`,
+    );
+
+    fitNodeIds(freeNodeIds);
+  }
+
+  function handleHighlightPathsToStart() {
+    if (!selectedNodeForEdit) {
+      setActionMessage("Select a Node first");
+      return;
+    }
+
+    const selectedNodeId = selectedNodeForEdit.data.originalId;
+
+    const ancestorSubgraph = findPathsToStart(
+      graphData,
+      selectedNodeId,
+    );
+
+    if (!ancestorSubgraph) {
+      setActionMessage(`Node not found: ${selectedNodeId}`);
+      return;
+    }
+
+    const ancestorNodeIds = new Set(
+      ancestorSubgraph.nodeIds.map((nodeId) => `n-${nodeId}`),
+    );
+
+    const ancestorEdgeIds = new Set(
+      ancestorSubgraph.edgeIds.map((edgeId) => `e-${edgeId}`),
+    );
+
+    const rootNodeIds = new Set(
+      ancestorSubgraph.rootNodeIds.map((nodeId) => `n-${nodeId}`),
+    );
+
+    const selectedFlowNodeId = `n-${selectedNodeId}`;
+
+    setSelectedNodeType("all");
+    setSelectedEdgeType("all");
+    setSelectedEdgeForEdit(null);
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        const isInPath = ancestorNodeIds.has(node.id);
+        const isSelectedNode = node.id === selectedFlowNodeId;
+        const isRootNode = rootNodeIds.has(node.id);
+
+        let border = "2px solid #ffffff";
+
+        if (isInPath) {
+          border = "3px solid #f59e0b";
+        }
+
+        if (isRootNode) {
+          border = "3px solid #16a34a";
+        }
+
+        if (isSelectedNode) {
+          border = "4px solid #ef4444";
+        }
+
+        return {
+          ...node,
+          hidden: false,
+          selected: isSelectedNode,
+          style: {
+            ...node.style,
+            opacity: isInPath ? 1 : 0.08,
+            border,
+          },
+        };
+      }),
+    );
+
+    setEdges((currentEdges) =>
+      currentEdges.map((edge) => {
+        const isInPath = ancestorEdgeIds.has(edge.id);
+
+        return {
+          ...edge,
+          hidden: false,
+          selected: false,
+          style: {
+            ...edge.style,
+            opacity: isInPath ? 1 : 0.08,
+            stroke: isInPath ? "#ef4444" : "#cbd5e1",
+            strokeWidth: isInPath ? 4 : 1,
+          },
+          markerEnd:
+            typeof edge.markerEnd === "object"
+              ? {
+                  ...edge.markerEnd,
+                  color: isInPath ? "#ef4444" : "#cbd5e1",
+                }
+              : edge.markerEnd,
+        };
+      }),
+    );
+
+    setSelectedElement(
+      `Paths to start: ${String(selectedNodeForEdit.data.label)}`,
+    );
+
+    const rootMessage =
+      ancestorSubgraph.rootNodeIds.length === 0
+        ? "no root Node found"
+        : `${ancestorSubgraph.rootNodeIds.length} root Node${
+            ancestorSubgraph.rootNodeIds.length === 1 ? "" : "s"
+          }`;
+
+    setActionMessage(
+      `Paths to start: ${ancestorSubgraph.nodeIds.length} Nodes, ` +
+        `${ancestorSubgraph.edgeIds.length} Edges, ${rootMessage}`,
+    );
+
+    fitNodeIds(ancestorNodeIds);
+  }
+
   function handleHighlightPath() {
     const startValue = pathStart.trim();
     const endValue = pathEnd.trim();
@@ -753,6 +977,7 @@ export function ReactFlowGraph({
     const path = findDirectedPath(graphData, startNodeId, endNodeId);
 
     setSelectedNodeType("all");
+    setSelectedEdgeType("all");
 
     if (!path) {
       /*
@@ -912,6 +1137,8 @@ export function ReactFlowGraph({
     setSelectedElement("None");
     setSelectedNodeForEdit(null);
     setSelectedEdgeForEdit(null);
+    setSelectedNodeType("all");
+    setSelectedEdgeType("all");
 
     setMetrics({
       adapterMs,
@@ -1375,28 +1602,10 @@ export function ReactFlowGraph({
       </div>
 
       <div className="react-flow-product-controls">
-        <div className="react-flow-control-group">
-          <label htmlFor="react-flow-node-search">Find Node</label>
-
-          <input
-            id="react-flow-node-search"
-            type="search"
-            value={nodeSearch}
-            placeholder="ID or label"
-            onChange={(event) => {
-              setNodeSearch(event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                handleFindNode();
-              }
-            }}
-          />
-
-          <button type="button" onClick={handleFindNode}>
-            Find
-          </button>
-        </div>
+        <GraphSearchPanel
+          graph={graphData}
+          onSelect={handleSearchResult}
+        />
 
         <div className="react-flow-control-group">
           <label htmlFor="react-flow-node-type">Node type</label>
@@ -1417,6 +1626,28 @@ export function ReactFlowGraph({
             ))}
           </select>
         </div>
+
+        <div className="react-flow-control-group">
+          <label htmlFor="react-flow-edge-type">Edge type</label>
+
+          <select
+            id="react-flow-edge-type"
+            value={selectedEdgeType}
+            onChange={(event) => {
+              handleEdgeTypeFilter(event.target.value);
+            }}
+          >
+            <option value="all">All types</option>
+
+            {edgeTypes.map((edgeType) => (
+              <option key={edgeType} value={edgeType}>
+                {edgeType}
+              </option>
+            ))}
+          </select>
+        </div>
+
+
 
         <div className="react-flow-control-group react-flow-path-controls">
 
@@ -1440,6 +1671,31 @@ export function ReactFlowGraph({
 
           <button type="button" onClick={handleHighlightPath}>
             Find path
+          </button>
+        </div>
+
+        <div className="react-flow-control-group">
+          <label>Navigation</label>
+
+          <button
+            type="button"
+            onClick={handleHighlightPathsToStart}
+            disabled={!selectedNodeForEdit}
+            title={
+              selectedNodeForEdit
+                ? "Show every incoming path to this Node"
+                : "Select a Node first"
+            }
+          >
+            Paths to start
+          </button>
+
+          <button
+            type="button"
+            onClick={handleShowFreeNodes}
+            title="Show Nodes without incoming or outgoing Edges"
+          >
+            Show free Nodes
           </button>
         </div>
 

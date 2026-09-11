@@ -38,6 +38,7 @@ const NODE_COLORS: Record<string, string> = {
   organization: '#475569',
   project: '#06b6d4',
   hobby: '#b45309',
+  story: '#db2777',
 }
 
 export function toReactFlowElements(

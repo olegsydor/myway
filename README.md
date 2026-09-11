@@ -111,24 +111,53 @@ docker compose up -d --build api
 
 ## Graph frontend
 
-The frontend graph stack selected in Stage 5 is:
+The primary frontend graph stack selected in Stage 5 is:
 
 - React Flow 12.11.5
 - @dagrejs/dagre 3.1.1
 
-The React Flow frontend supports graph visualization and the basic
-graph-editing workflow implemented in Stage 6:
+The React Flow frontend supports:
 
-- create, edit, and delete Nodes
-- create, edit, and delete directed Edges
-- Node and Edge descriptions and properties
-- searchable Node selection
-- Grid, Circle, and Dagre layouts
-- Node/type search and filtering
-- directed path search and highlighting
+- automatic graph loading from `GET /graph` on application startup;
+- creation, editing, and deletion of Nodes;
+- creation, editing, and deletion of directed Edges;
+- Node and Edge descriptions and Properties;
+- Grid, Circle, and Dagre layouts;
+- Node and Edge type filtering;
+- graph-wide search across Nodes, Edges, descriptions, types, endpoints, and Properties;
+- navigation to every search result;
+- directed path search between two Nodes;
+- backward navigation through every incoming path to a selected Node;
+- detection and highlighting of unconnected Nodes;
+- selection and neighbour highlighting.
 
-The backend remains the source of truth. After successful graph
-mutations, the frontend reloads the canonical graph through `GET /graph`.
+The graph currently supports these Node types:
+
+- `person`
+- `place`
+- `organization`
+- `skill`
+- `event`
+- `project`
+- `hobby`
+- `story`
+
+The graph currently supports these Edge types:
+
+- `knows`
+- `works_at`
+- `lives_in`
+- `has_skill`
+- `participates_in`
+- `works_on`
+- `located_in`
+- `leads_to`
+- `family`
+- `pushed`
+- `shared`
+
+The backend remains the source of truth. After successful graph mutations,
+the frontend reloads the canonical graph through `GET /graph`.
 
 Node deletion does not cascade to connected Edges. Connected Edges must
 be explicitly deleted first.
@@ -142,13 +171,11 @@ rejected as primary renderers.
 
 The frontend and evaluated renderer implementations are under:
 
-```text id="89dcf2"
+```text
 poc/graph-visualization
-```
 
 Detailed stage documentation:
-
-```text id="w66b45"
 docs/stage-5.md
 docs/stage-6.md
-```
+docs/stage-7.md
+docs/stage-8.md

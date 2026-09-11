@@ -107,3 +107,93 @@ function reconstructPath(
     edgeIds,
   }
 }
+
+export interface GraphAncestorSubgraph {
+  nodeIds: number[]
+  edgeIds: number[]
+  rootNodeIds: number[]
+}
+
+export function findPathsToStart(
+  graph: GraphResponse,
+  selectedNodeId: number,
+): GraphAncestorSubgraph | null {
+  const existingNodeIds = new Set(
+    graph.nodes.map((node) => node.id),
+  )
+
+  if (!existingNodeIds.has(selectedNodeId)) {
+    return null
+  }
+
+  const incomingEdges = new Map<number, GraphEdge[]>()
+
+  for (const edge of graph.edges) {
+    const endpointsExist =
+      existingNodeIds.has(edge.source) &&
+      existingNodeIds.has(edge.target)
+
+    const isSelfLoop = edge.source === edge.target
+
+    if (!endpointsExist || isSelfLoop) {
+      continue
+    }
+
+    const edges = incomingEdges.get(edge.target) ?? []
+    edges.push(edge)
+    incomingEdges.set(edge.target, edges)
+  }
+
+  const nodeIds = new Set<number>([selectedNodeId])
+  const edgeIds = new Set<number>()
+  const rootNodeIds = new Set<number>()
+
+  const queue: number[] = [selectedNodeId]
+  let queueIndex = 0
+
+  while (queueIndex < queue.length) {
+    const currentNodeId = queue[queueIndex]
+    queueIndex += 1
+
+    const currentIncomingEdges =
+      incomingEdges.get(currentNodeId) ?? []
+
+    if (currentIncomingEdges.length === 0) {
+      rootNodeIds.add(currentNodeId)
+      continue
+    }
+
+    for (const edge of currentIncomingEdges) {
+      edgeIds.add(edge.id)
+
+      if (nodeIds.has(edge.source)) {
+        continue
+      }
+
+      nodeIds.add(edge.source)
+      queue.push(edge.source)
+    }
+  }
+
+  return {
+    nodeIds: [...nodeIds].sort((left, right) => left - right),
+    edgeIds: [...edgeIds].sort((left, right) => left - right),
+    rootNodeIds: [...rootNodeIds].sort((left, right) => left - right),
+  }
+}
+
+export function findUnconnectedNodeIds(
+  graph: GraphResponse,
+): number[] {
+  const connectedNodeIds = new Set<number>();
+
+  for (const edge of graph.edges) {
+    connectedNodeIds.add(edge.source);
+    connectedNodeIds.add(edge.target);
+  }
+
+  return graph.nodes
+    .filter((node) => !connectedNodeIds.has(node.id))
+    .map((node) => node.id)
+    .sort((left, right) => left - right);
+}
