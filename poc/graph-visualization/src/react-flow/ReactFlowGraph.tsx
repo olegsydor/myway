@@ -1335,12 +1335,15 @@ export function ReactFlowGraph({
     }
   }
 
-  return (
-    <section className="react-flow-panel">
-        <div className="react-flow-header">
-  <strong>React Flow 12.11.5</strong>
-</div>
-      <div className="react-flow-toolbar">
+return (
+  <section className="react-flow-panel">
+    <aside className="react-flow-sidebar">
+      <div className="react-flow-header">
+        <strong>My Way tools</strong>
+      </div>
+
+      <div className="react-flow-sidebar__content">
+        <div className="react-flow-toolbar">
         <div>
           <strong>Create Node</strong>
           <label>
@@ -1704,58 +1707,7 @@ export function ReactFlowGraph({
         )}
       </div>
 
-      <div className="react-flow-metrics">
-        <span>Adapter: {metrics.adapterMs.toFixed(2)} ms</span>
-
-        <span>Initialization: {metrics.initializationMs.toFixed(2)} ms</span>
-
-        <span>
-          First render:{" "}
-          {metrics.firstRenderMs === null
-            ? "—"
-            : `${metrics.firstRenderMs.toFixed(2)} ms`}
-        </span>
-
-        <span>
-          Layout:{" "}
-          {metrics.layoutMs === null
-            ? "—"
-            : `${metrics.layoutMs.toFixed(2)} ms`}
-        </span>
-
-        <span>Selected: {selectedElement}</span>
-      </div>
-
-      <div className="react-flow-container">
-        <ReactFlow<ReactFlowNode, ReactFlowEdge>
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={reactFlowNodeTypes}
-          edgeTypes={reactFlowEdgeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={handleNodeClick}
-          onEdgeClick={handleEdgeClick}
-          onPaneClick={resetHighlighting}
-          onInit={(instance) => {
-            instanceRef.current = instance;
-          }}
-          fitView
-          fitViewOptions={{ padding: 0.1 }}
-          minZoom={0.05}
-          maxZoom={4}
-          nodesConnectable={false}
-          edgesReconnectable={false}
-          deleteKeyCode={null}
-          onlyRenderVisibleElements
-          elevateEdgesOnSelect
-        >
-          <Background />
-          <Controls />
-        </ReactFlow>
-      </div>
-
-      <div className="react-flow-edit-panel">
+          <div className="react-flow-edit-panel">
         {selectedNodeForEdit && (
           <div>
             <strong>Edit Node</strong>
@@ -1984,6 +1936,65 @@ export function ReactFlowGraph({
             </div>
           </div>
         )}
+      </div>
+
+      </div>
+    </aside>
+
+    <div className="react-flow-workspace">
+
+
+      <div className="react-flow-metrics">
+        <span>Adapter: {metrics.adapterMs.toFixed(2)} ms</span>
+
+        <span>Initialization: {metrics.initializationMs.toFixed(2)} ms</span>
+
+        <span>
+          First render:{" "}
+          {metrics.firstRenderMs === null
+            ? "—"
+            : `${metrics.firstRenderMs.toFixed(2)} ms`}
+        </span>
+
+        <span>
+          Layout:{" "}
+          {metrics.layoutMs === null
+            ? "—"
+            : `${metrics.layoutMs.toFixed(2)} ms`}
+        </span>
+
+        <span>Selected: {selectedElement}</span>
+      </div>
+
+      <div className="react-flow-container">
+        <ReactFlow<ReactFlowNode, ReactFlowEdge>
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={reactFlowNodeTypes}
+          edgeTypes={reactFlowEdgeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onEdgeClick={handleEdgeClick}
+          onPaneClick={resetHighlighting}
+          onInit={(instance) => {
+            instanceRef.current = instance;
+          }}
+          fitView
+          fitViewOptions={{ padding: 0.1 }}
+          minZoom={0.05}
+          maxZoom={4}
+          nodesConnectable={false}
+          edgesReconnectable={false}
+          deleteKeyCode={null}
+          onlyRenderVisibleElements
+          elevateEdgesOnSelect
+        >
+          <Background />
+          <Controls />
+        </ReactFlow>
+      </div>
+
       </div>
 
 
