@@ -197,3 +197,47 @@ export function findUnconnectedNodeIds(
     .map((node) => node.id)
     .sort((left, right) => left - right);
 }
+
+export function findBranchNodeIds(
+  graph: GraphResponse,
+  selectedNodeId: number,
+): number[] {
+  const existingNodeIds = new Set(
+    graph.nodes.map((node) => node.id),
+  );
+
+  if (!existingNodeIds.has(selectedNodeId)) {
+    return [];
+  }
+
+  const outgoing = new Map<number, number[]>();
+
+  for (const edge of graph.edges) {
+    if (
+      !existingNodeIds.has(edge.source) ||
+      !existingNodeIds.has(edge.target)
+    ) {
+      continue;
+    }
+
+    const targets = outgoing.get(edge.source) ?? [];
+    targets.push(edge.target);
+    outgoing.set(edge.source, targets);
+  }
+
+  const visited = new Set<number>([selectedNodeId]);
+  const queue = [selectedNodeId];
+
+  for (let index = 0; index < queue.length; index += 1) {
+    for (const target of outgoing.get(queue[index]) ?? []) {
+      if (visited.has(target)) {
+        continue;
+      }
+
+      visited.add(target);
+      queue.push(target);
+    }
+  }
+
+  return queue;
+}

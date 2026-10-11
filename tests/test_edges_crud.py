@@ -542,7 +542,7 @@ async def test_user_cannot_update_edge_to_another_users_node(
 
 
 @pytest.mark.asyncio
-async def test_self_loop_is_allowed(
+async def test_self_loop_is_rejected(
     client,
     db_session,
 ):
@@ -586,12 +586,10 @@ async def test_self_loop_is_allowed(
     finally:
         auth.TEST_USER_ID = original_user_id
 
-    assert response.status_code == 201
-
-    data = response.json()
-
-    assert data["source_node_id"] == node.id
-    assert data["target_node_id"] == node.id
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Self-loop edges are not allowed",
+    }
 
 
 @pytest.mark.asyncio

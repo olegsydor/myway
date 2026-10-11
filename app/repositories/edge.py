@@ -4,6 +4,49 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.edge import Edge
 from app.repositories.node import get_node_by_id
 
+class EdgeCycleError(ValueError):
+    pass
+
+
+async def validate_edge_dag(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    source_node_id: int,
+    target_node_id: int,
+    exclude_edge_id: int | None = None,
+) -> None:
+    if source_node_id == target_node_id:
+        raise EdgeCycleError("Self-loop edges are not allowed")
+
+    query = select(
+        Edge.source_node_id,
+        Edge.target_node_id,
+    ).where(Edge.user_id == user_id)
+
+    if exclude_edge_id is not None:
+        query = query.where(Edge.id != exclude_edge_id)
+
+    result = await session.execute(query)
+
+    adjacency: dict[int, list[int]] = {}
+    for source_id, target_id in result:
+        adjacency.setdefault(source_id, []).append(target_id)
+
+    pending = [target_node_id]
+    visited: set[int] = set()
+
+    while pending:
+        node_id = pending.pop()
+
+        if node_id == source_node_id:
+            raise EdgeCycleError("This edge would create a cycle")
+
+        if node_id in visited:
+            continue
+
+        visited.add(node_id)
+        pending.extend(adjacency.get(node_id, []))
 
 async def create_edge(
     session: AsyncSession,
@@ -32,6 +75,13 @@ async def create_edge(
 
     if target_node is None:
         return None
+
+    await validate_edge_dag(
+        session,
+        user_id=user_id,
+        source_node_id=source_node_id,
+        target_node_id=target_node_id,
+    )
 
     edge = Edge(
         user_id=user_id,
@@ -102,6 +152,29 @@ async def update_edge(
 
         if target_node is None:
             return None
+
+    source_node_id = data.get(
+        "source_node_id",
+        edge.source_node_id,
+    )
+    target_node_id = data.get(
+        "target_node_id",
+        edge.target_node_id,
+    )
+
+    endpoints_changed = (
+        source_node_id != edge.source_node_id
+        or target_node_id != edge.target_node_id
+    )
+
+    if endpoints_changed:
+        await validate_edge_dag(
+            session,
+            user_id=edge.user_id,
+            source_node_id=source_node_id,
+            target_node_id=target_node_id,
+            exclude_edge_id=edge.id,
+        )
 
     for field, value in data.items():
         setattr(edge, field, value)

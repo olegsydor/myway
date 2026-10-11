@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  applyNodeChanges,
   Background,
   Controls,
   ReactFlow,
   useEdgesState,
   useNodesState,
   type EdgeMouseHandler,
+  type NodeChange,
   type NodeMouseHandler,
   type ReactFlowInstance,
 } from "@xyflow/react";
@@ -17,6 +19,7 @@ import {
   findDirectedPath,
   findPathsToStart,
   findUnconnectedNodeIds,
+  findBranchNodeIds,
 } from "../shared/graphAlgorithms";
 
 import type { GraphSearchResult } from "../shared/graphSearch";
@@ -169,6 +172,12 @@ function objectToPropertyRows(
   }));
 }
 
+interface BranchSelection {
+  graph: GraphResponse;
+  anchorId: string;
+  nodeIds: Set<string>;
+}
+
 export function ReactFlowGraph({
   graph: graphData,
   onGraphChanged,
@@ -180,7 +189,7 @@ export function ReactFlowGraph({
 
   const currentLayoutRef = useRef<LayoutName>("dagre");
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<ReactFlowNode>([]);
+  const [nodes, setNodes] = useNodesState<ReactFlowNode>([]);
   const [isDeletingNode, setIsDeletingNode] = useState(false);
 
   const [edges, setEdges, onEdgesChange] = useEdgesState<ReactFlowEdge>([]);
@@ -190,6 +199,218 @@ export function ReactFlowGraph({
     useState<ReactFlowNode | null>(null);
   const [selectedEdgeForEdit, setSelectedEdgeForEdit] =
     useState<ReactFlowEdge | null>(null);
+
+  const [branchSelection, setBranchSelection] =
+    useState<BranchSelection | null>(null);
+
+  // A canonical graph refresh invalidates the previous branch.
+  const activeBranch =
+    branchSelection?.graph === graphData ? branchSelection : null;
+
+  useEffect(() => {
+    if (!activeBranch) {
+      return;
+    }
+
+    const branchNodeIds = activeBranch.nodeIds;
+
+    function handleBranchKeyDown(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (
+        target instanceof HTMLElement &&
+        (
+          target.isContentEditable ||
+          target.closest(
+            "input, textarea, select, [role='textbox'], " +
+            "[role='combobox'], [role='slider'], [role='spinbutton']",
+          )
+        )
+      ) {
+        return;
+      }
+
+      const step = event.shiftKey ? 50 : 10;
+      let dx = 0;
+      let dy = 0;
+
+      switch (event.key) {
+        case "ArrowLeft":
+          dx = -step;
+          break;
+        case "ArrowRight":
+          dx = step;
+          break;
+        case "ArrowUp":
+          dy = -step;
+          break;
+        case "ArrowDown":
+          dy = step;
+          break;
+        default:
+          return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (!branchNodeIds.has(node.id)) {
+            return node;
+          }
+
+          return {
+            ...node,
+            position: {
+              x: node.position.x + dx,
+              y: node.position.y + dy,
+            },
+          };
+        }),
+      );
+    }
+
+    window.addEventListener("keydown", handleBranchKeyDown, true);
+
+    return () => {
+      window.removeEventListener("keydown", handleBranchKeyDown, true);
+    };
+  }, [activeBranch, setNodes]);
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<ReactFlowNode>[]) => {
+      setNodes((currentNodes) => {
+        if (!activeBranch) {
+          return applyNodeChanges(changes, currentNodes);
+        }
+
+        const anchorChange = changes.find(
+          (change) =>
+            change.type === "position" &&
+            change.id === activeBranch.anchorId &&
+            change.position !== undefined,
+        );
+
+        if (
+          !anchorChange ||
+          anchorChange.type !== "position" ||
+          !anchorChange.position
+        ) {
+          return applyNodeChanges(changes, currentNodes);
+        }
+
+        const anchor = currentNodes.find(
+          (node) => node.id === activeBranch.anchorId,
+        );
+
+        if (!anchor) {
+          return applyNodeChanges(changes, currentNodes);
+        }
+
+        const dx = anchorChange.position.x - anchor.position.x;
+        const dy = anchorChange.position.y - anchor.position.y;
+
+        const updatedNodes = applyNodeChanges(changes, currentNodes);
+
+        return updatedNodes.map((node) => {
+          if (
+            node.id === activeBranch.anchorId ||
+            !activeBranch.nodeIds.has(node.id)
+          ) {
+            return node;
+          }
+
+          return {
+            ...node,
+            position: {
+              x: node.position.x + dx,
+              y: node.position.y + dy,
+            },
+          };
+        });
+      });
+    },
+    [activeBranch, setNodes],
+  );
+
+  const visibleBranchCount = activeBranch
+    ? nodes.filter(
+        (node) => activeBranch.nodeIds.has(node.id) && !node.hidden,
+      ).length
+    : 0;
+
+  const previewNodes = activeBranch
+    ? nodes.map((node) => {
+        const isMember = activeBranch.nodeIds.has(node.id);
+        const isAnchor = node.id === activeBranch.anchorId;
+
+        return {
+          ...node,
+          selected: isAnchor,
+          draggable: isAnchor,
+          style: {
+            ...node.style,
+            opacity: isMember ? 1 : 0.2,
+            border: isAnchor
+              ? "4px solid #ef4444"
+              : isMember
+                ? "3px solid #f59e0b"
+                : "2px solid #ffffff",
+          },
+        };
+      })
+    : nodes;
+
+  const previewEdges = activeBranch
+    ? edges.map((edge) => {
+        const touchesBranch =
+          activeBranch.nodeIds.has(edge.source) ||
+          activeBranch.nodeIds.has(edge.target);
+
+        return {
+          ...edge,
+          selected: false,
+          style: {
+            ...edge.style,
+            opacity: touchesBranch ? 1 : 0.15,
+          },
+        };
+      })
+    : edges;
+
+  function handleSelectBranch() {
+    if (!selectedNodeForEdit) {
+      return;
+    }
+
+    const nodeIds = new Set(
+      findBranchNodeIds(
+        graphData,
+        selectedNodeForEdit.data.originalId,
+      ).map((id) => `n-${id}`),
+    );
+
+    if (nodeIds.size === 0) {
+      return;
+    }
+
+    setBranchSelection({
+      graph: graphData,
+      anchorId: selectedNodeForEdit.id,
+      nodeIds,
+    });
+  }
 
   const [editEdgeSourceId, setEditEdgeSourceId] = useState("");
   const [editEdgeTargetId, setEditEdgeTargetId] = useState("");
@@ -245,6 +466,7 @@ export function ReactFlowGraph({
   ].sort();
 
   const resetHighlighting = useCallback(() => {
+    setBranchSelection(null);
     setNodes((currentNodes) =>
       currentNodes.map((node) => ({
         ...node,
@@ -308,6 +530,7 @@ export function ReactFlowGraph({
   }
 
   function restoreAllElements() {
+    setBranchSelection(null);
     setSelectedNodeType("all");
     setSelectedEdgeType("all");
     setNodes((currentNodes) =>
@@ -348,9 +571,18 @@ export function ReactFlowGraph({
     setSelectedNodeForEdit(null);
     setSelectedEdgeForEdit(null);
   }
-
   const handleNodeClick: NodeMouseHandler<ReactFlowNode> = useCallback(
+
     (_event, selectedNode) => {
+      if (
+        branchSelection?.graph === graphData &&
+        selectedNode.id === branchSelection.anchorId
+      ) {
+        return;
+      }
+
+      setBranchSelection(null);
+
       const connectedEdgeIds = new Set(
         graphData.edges
           .filter(
@@ -437,11 +669,13 @@ export function ReactFlowGraph({
 
       setSelectedElement(`Node: ${String(selectedNode.data.label)}`);
     },
-    [graphData.edges, graphData.nodes, availableNodeTypes, setEdges, setNodes],
+    [graphData, branchSelection, availableNodeTypes, setEdges, setNodes],
   );
 
   const handleEdgeClick: EdgeMouseHandler<ReactFlowEdge> = useCallback(
     (_event, selectedEdge) => {
+      setBranchSelection(null);
+
       setSelectedNodeForEdit(null);
       setSelectedEdgeForEdit(selectedEdge);
       const selectedGraphEdge = graphData.edges.find(
@@ -519,6 +753,8 @@ export function ReactFlowGraph({
   );
 
   function handleSearchResult(result: GraphSearchResult) {
+    setBranchSelection(null);
+
     const selectedNodeIds =
       result.kind === "node"
         ? new Set([`n-${result.id}`])
@@ -617,6 +853,8 @@ export function ReactFlowGraph({
   }
 
   function applyTypeFilters(nodeType: string, edgeType: string) {
+    setBranchSelection(null);
+
     const visibleNodeIds = new Set(
       graphData.nodes
         .filter((node) => nodeType === "all" || node.type === nodeType)
@@ -778,6 +1016,8 @@ export function ReactFlowGraph({
   }
 
   function handleShowFreeNodes() {
+    setBranchSelection(null);
+
     const freeNodeIds = new Set(
       findUnconnectedNodeIds(graphData).map(
         (nodeId) => `n-${nodeId}`,
@@ -845,6 +1085,8 @@ export function ReactFlowGraph({
   }
 
   function handleHighlightPathsToStart() {
+    setBranchSelection(null);
+
     if (!selectedNodeForEdit) {
       setActionMessage("Select a Node first");
       return;
@@ -958,6 +1200,8 @@ export function ReactFlowGraph({
   }
 
   function handleHighlightPath() {
+    setBranchSelection(null);
+
     const startValue = pathStart.trim();
     const endValue = pathEnd.trim();
 
@@ -1056,6 +1300,8 @@ export function ReactFlowGraph({
 
   const runLayout = useCallback(
     (layoutName: LayoutName) => {
+      setBranchSelection(null);
+
       const layoutStartedAt = performance.now();
 
       currentLayoutRef.current = layoutName;
@@ -1682,6 +1928,32 @@ return (
 
           <button
             type="button"
+            onClick={handleSelectBranch}
+            disabled={!selectedNodeForEdit}
+          >
+            Select branch
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setBranchSelection(null)}
+            disabled={!activeBranch}
+          >
+            Cancel branch selection
+          </button>
+
+          {activeBranch && (
+            <span>
+              Selected branch: {activeBranch.nodeIds.size} of{" "}
+              {graphData.nodes.length} Nodes; {visibleBranchCount} visible,{" "}
+              {activeBranch.nodeIds.size - visibleBranchCount} hidden
+              <br />
+              Arrow keys: move 10; Shift + Arrow: move 50
+            </span>
+          )}
+
+          <button
+            type="button"
             onClick={handleHighlightPathsToStart}
             disabled={!selectedNodeForEdit}
             title={
@@ -1968,11 +2240,12 @@ return (
 
       <div className="react-flow-container">
         <ReactFlow<ReactFlowNode, ReactFlowEdge>
-          nodes={nodes}
-          edges={edges}
+          nodes={previewNodes}
+          edges={previewEdges}
           nodeTypes={reactFlowNodeTypes}
           edgeTypes={reactFlowEdgeTypes}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
+          autoPanOnNodeDrag
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
           onEdgeClick={handleEdgeClick}

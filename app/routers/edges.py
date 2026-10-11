@@ -6,6 +6,7 @@ from app.core.database import get_db_session
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.repositories.edge import (
+    EdgeCycleError,
     create_edge,
     delete_edge,
     get_edge_by_id,
@@ -14,6 +15,8 @@ from app.repositories.edge import (
 )
 from app.schemas.edge import EdgeCreate, EdgeRead, EdgeUpdate
 from app.repositories.edge_type import get_edge_type_by_id
+
+
 
 router = APIRouter(
     prefix="/edges",
@@ -53,6 +56,12 @@ async def create_edge_endpoint(
             description=data.description,
             properties=data.properties,
         )
+    except EdgeCycleError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     except IntegrityError as exc:
         await session.rollback()
 
@@ -148,6 +157,12 @@ async def update_edge_endpoint(
             edge=edge,
             data=data.model_dump(exclude_unset=True),
         )
+    except EdgeCycleError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     except IntegrityError as exc:
         await session.rollback()
 
