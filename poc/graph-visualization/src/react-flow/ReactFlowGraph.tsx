@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import {
   applyNodeChanges,
@@ -50,6 +56,15 @@ import { GraphSearchPanel } from "./GraphSearchPanel";
 
 import { MyWayNode } from "./MyWayNode";
 import { MyWayEdge } from "./MyWayEdge";
+
+import {
+  reconcileGroup,
+  rectanglesIntersect,
+  selectGroupMembers,
+  toggleGroupMember,
+  translateMembers,
+  type ManualGroup,
+} from "../shared/manualGroups";
 
 interface ReactFlowGraphProps {
   graph: GraphResponse;
@@ -178,6 +193,22 @@ interface BranchSelection {
   nodeIds: Set<string>;
 }
 
+interface SelectionRectangle {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+interface RectangleGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  additive: boolean;
+}
+
+const RECTANGLE_DRAG_THRESHOLD = 5;
+
 export function ReactFlowGraph({
   graph: graphData,
   onGraphChanged,
@@ -207,14 +238,192 @@ export function ReactFlowGraph({
   const activeBranch =
     branchSelection?.graph === graphData ? branchSelection : null;
 
-  useEffect(() => {
-    if (!activeBranch) {
+  const [manualGroup, setManualGroup] =
+    useState<ManualGroup | null>(null);
+
+  const activeManualGroup =
+    manualGroup && manualGroup.nodeIds.size > 0
+      ? manualGroup
+      : null;
+
+  const visibleManualCount = activeManualGroup
+    ? nodes.filter(
+        (node) => activeManualGroup.nodeIds.has(node.id) && !node.hidden,
+      ).length
+    : 0;
+
+  const rectangleGestureRef = useRef<RectangleGesture | null>(null);
+
+  const [selectionRectangle, setSelectionRectangle] =
+    useState<SelectionRectangle | null>(null);
+
+  function handleRectanglePointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (event.button !== 0 || !event.shiftKey) {
       return;
     }
 
-    const branchNodeIds = activeBranch.nodeIds;
+    const target = event.target;
 
-    function handleBranchKeyDown(event: KeyboardEvent) {
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    // Start only on empty canvas, including its background.
+    if (
+      !target.closest(".react-flow__pane, .react-flow__background") ||
+      target.closest(
+        ".react-flow__node, .react-flow__edge, " +
+        ".react-flow__controls, .react-flow__panel",
+      )
+    ) {
+      return;
+    }
+
+    // Prevent Shift gestures from starting React Flow's own selection.
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (activeBranch) {
+      return;
+    }
+
+    rectangleGestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      additive: event.ctrlKey || event.metaKey,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleRectanglePointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const gesture = rectangleGestureRef.current;
+
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const distance = Math.hypot(
+      event.clientX - gesture.startX,
+      event.clientY - gesture.startY,
+    );
+
+    if (distance < RECTANGLE_DRAG_THRESHOLD && !selectionRectangle) {
+      return;
+    }
+
+    setSelectionRectangle({
+      startX: gesture.startX,
+      startY: gesture.startY,
+      endX: event.clientX,
+      endY: event.clientY,
+    });
+  }
+
+  function handleRectanglePointerUp(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const gesture = rectangleGestureRef.current;
+
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    rectangleGestureRef.current = null;
+    setSelectionRectangle(null);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const distance = Math.hypot(
+      event.clientX - gesture.startX,
+      event.clientY - gesture.startY,
+    );
+
+    if (
+      activeBranch ||
+      (!selectionRectangle && distance < RECTANGLE_DRAG_THRESHOLD)
+    ) {
+      return;
+    }
+
+    const left = Math.min(gesture.startX, event.clientX);
+    const right = Math.max(gesture.startX, event.clientX);
+    const top = Math.min(gesture.startY, event.clientY);
+    const bottom = Math.max(gesture.startY, event.clientY);
+
+    const visibleIds = new Set(
+      nodes.filter((node) => !node.hidden).map((node) => node.id),
+    );
+
+    const capturedIds = new Set<string>();
+
+    // Measure rendered node bounds in the same screen coordinates
+    // as the pointer. This automatically accounts for pan and zoom.
+    const nodeElements =
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        ".react-flow__node[data-id]",
+      );
+
+    for (const element of nodeElements) {
+      const nodeId = element.dataset.id;
+
+      if (!nodeId || !visibleIds.has(nodeId)) {
+        continue;
+      }
+
+      const bounds = element.getBoundingClientRect();
+
+      if (
+        bounds.width > 0 &&
+        bounds.height > 0 &&
+        rectanglesIntersect(bounds, { left, right, top, bottom })
+      ) {
+        capturedIds.add(nodeId);
+      }
+    }
+
+    setManualGroup((currentGroup) =>
+      selectGroupMembers(currentGroup, capturedIds, gesture.additive),
+    );
+  }
+
+  function handleRectanglePointerCancel(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (rectangleGestureRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    rectangleGestureRef.current = null;
+    setSelectionRectangle(null);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  useEffect(() => {
+    const memberIds =
+      activeBranch?.nodeIds ?? activeManualGroup?.nodeIds;
+
+    if (!memberIds) {
+      return;
+    }
+
+    const handleBranchKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
         event.isComposing ||
@@ -226,6 +435,36 @@ export function ReactFlowGraph({
       }
 
       const target = event.target;
+
+      if (activeManualGroup) {
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+
+        // Manual-group shortcuts apply only within the canvas.
+        if (
+          !target.closest(".react-flow-container") ||
+          target.closest(
+            "button, a, input, textarea, select, [role='button'], " +
+            "[role='textbox'], [role='combobox'], [role='slider'], " +
+            "[role='spinbutton']",
+          ) ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+
+        const focusedNodeElement =
+          target.closest<HTMLElement>(".react-flow__node");
+
+        const targetNodeId = focusedNodeElement
+          ? focusedNodeElement.dataset.id
+          : nodes.find((node) => node.selected && !node.hidden)?.id;
+
+        if (!targetNodeId || !memberIds.has(targetNodeId)) {
+          return;
+        }
+      }
 
       if (
         target instanceof HTMLElement &&
@@ -266,7 +505,7 @@ export function ReactFlowGraph({
 
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
-          if (!branchNodeIds.has(node.id)) {
+          if (!memberIds.has(node.id)) {
             return node;
           }
 
@@ -279,69 +518,73 @@ export function ReactFlowGraph({
           };
         }),
       );
-    }
+    };
 
     window.addEventListener("keydown", handleBranchKeyDown, true);
 
     return () => {
       window.removeEventListener("keydown", handleBranchKeyDown, true);
     };
-  }, [activeBranch, setNodes]);
+  }, [activeBranch, activeManualGroup, nodes, setNodes]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<ReactFlowNode>[]) => {
       setNodes((currentNodes) => {
-        if (!activeBranch) {
+        const memberIds =
+          activeBranch?.nodeIds ?? activeManualGroup?.nodeIds;
+
+        if (!memberIds) {
           return applyNodeChanges(changes, currentNodes);
         }
 
-        const anchorChange = changes.find(
+        const initiatorChange = changes.find(
           (change) =>
             change.type === "position" &&
-            change.id === activeBranch.anchorId &&
-            change.position !== undefined,
+            change.position !== undefined &&
+            (
+              activeBranch
+                ? change.id === activeBranch.anchorId
+                : memberIds.has(change.id)
+            ),
         );
 
         if (
-          !anchorChange ||
-          anchorChange.type !== "position" ||
-          !anchorChange.position
+          !initiatorChange ||
+          initiatorChange.type !== "position" ||
+          !initiatorChange.position
         ) {
           return applyNodeChanges(changes, currentNodes);
         }
 
-        const anchor = currentNodes.find(
-          (node) => node.id === activeBranch.anchorId,
+        const initiator = currentNodes.find(
+          (node) => node.id === initiatorChange.id,
         );
 
-        if (!anchor) {
+        if (!initiator) {
           return applyNodeChanges(changes, currentNodes);
         }
 
-        const dx = anchorChange.position.x - anchor.position.x;
-        const dy = anchorChange.position.y - anchor.position.y;
+        const dx = initiatorChange.position.x - initiator.position.x;
+        const dy = initiatorChange.position.y - initiator.position.y;
+
+        const originalNodes = new Map(
+          currentNodes.map((node) => [node.id, node]),
+        );
 
         const updatedNodes = applyNodeChanges(changes, currentNodes);
 
-        return updatedNodes.map((node) => {
-          if (
-            node.id === activeBranch.anchorId ||
-            !activeBranch.nodeIds.has(node.id)
-          ) {
-            return node;
-          }
+        const baselineNodes = updatedNodes.map((node) => {
+          const original = originalNodes.get(node.id);
 
-          return {
-            ...node,
-            position: {
-              x: node.position.x + dx,
-              y: node.position.y + dy,
-            },
-          };
+          return memberIds.has(node.id) && original
+            ? { ...node, position: original.position }
+            : node;
         });
+
+        return translateMembers(baselineNodes, memberIds, dx, dy);
       });
     },
-    [activeBranch, setNodes],
+    [activeBranch, activeManualGroup, setNodes],
   );
 
   const visibleBranchCount = activeBranch
@@ -370,7 +613,25 @@ export function ReactFlowGraph({
           },
         };
       })
-    : nodes;
+    : activeManualGroup
+      ? nodes.map((node) => {
+          const isMember = activeManualGroup.nodeIds.has(node.id);
+
+          return {
+            ...node,
+            style: {
+              ...node.style,
+              opacity: 1,
+              border: isMember
+                ? "3px solid #22c55e"
+                : "2px solid #ffffff",
+              boxShadow: isMember
+                ? "0 0 0 2px rgba(34, 197, 94, 0.25)"
+                : "none",
+            },
+          };
+        })
+      : nodes;
 
   const previewEdges = activeBranch
     ? edges.map((edge) => {
@@ -387,10 +648,18 @@ export function ReactFlowGraph({
           },
         };
       })
-    : edges;
+    : activeManualGroup
+      ? edges.map((edge) => ({
+          ...edge,
+          style: {
+            ...edge.style,
+            opacity: 1,
+          },
+        }))
+      : edges;
 
   function handleSelectBranch() {
-    if (!selectedNodeForEdit) {
+    if (!selectedNodeForEdit || activeManualGroup) {
       return;
     }
 
@@ -573,7 +842,20 @@ export function ReactFlowGraph({
   }
   const handleNodeClick: NodeMouseHandler<ReactFlowNode> = useCallback(
 
-    (_event, selectedNode) => {
+    (event, selectedNode) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+
+        if (branchSelection?.graph === graphData) {
+          return;
+        }
+
+        setManualGroup((currentGroup) =>
+          toggleGroupMember(currentGroup, selectedNode.id),
+        );
+
+        return;
+      }
       if (
         branchSelection?.graph === graphData &&
         selectedNode.id === branchSelection.anchorId
@@ -1372,13 +1654,68 @@ export function ReactFlowGraph({
     const initializationStartedAt = performance.now();
     const renderStartedAt = performance.now();
 
-    const positionedNodes = positionNodes(
-      elements.nodes,
-      elements.edges,
-      currentLayoutRef.current,
+    setNodes((currentNodes) => {
+      // Initial load: apply the selected automatic layout.
+      if (currentNodes.length === 0) {
+        return positionNodes(
+          elements.nodes,
+          elements.edges,
+          currentLayoutRef.current,
+        );
+      }
+
+      const previousById = new Map(
+        currentNodes.map((node) => [node.id, node]),
+      );
+
+      const newNodes = elements.nodes.filter(
+        (node) => !previousById.has(node.id),
+      );
+
+      // Place new nodes to the right without rearranging existing ones.
+      const rightEdge = Math.max(
+        ...currentNodes.map(
+          (node) =>
+            node.position.x +
+            (node.measured?.width ?? NODE_WIDTH),
+        ),
+      );
+
+      const topEdge = Math.min(
+        ...currentNodes.map((node) => node.position.y),
+      );
+
+      const newPositions = new Map(
+        newNodes.map((node, index) => [
+          node.id,
+          {
+            x: rightEdge + 100 + (index % 4) * 220,
+            y: topEdge + Math.floor(index / 4) * 120,
+          },
+        ]),
+      );
+
+      return elements.nodes.map((node) => {
+        const previous = previousById.get(node.id);
+
+        return {
+          ...node,
+          position:
+            previous?.position ??
+            newPositions.get(node.id) ??
+            node.position,
+        };
+      });
+    });
+
+    const existingNodeIds = new Set(
+      elements.nodes.map((node) => node.id),
     );
 
-    setNodes(positionedNodes);
+    setManualGroup((currentGroup) =>
+      reconcileGroup(currentGroup, existingNodeIds),
+    );
+
     setEdges(elements.edges);
     setSelectedElement("None");
     setSelectedNodeForEdit(null);
@@ -1929,9 +2266,65 @@ return (
           <button
             type="button"
             onClick={handleSelectBranch}
-            disabled={!selectedNodeForEdit}
+            disabled={!selectedNodeForEdit || Boolean(activeManualGroup)}
+            title={
+              activeManualGroup
+                ? "Clear the manual group before selecting a branch"
+                : selectedNodeForEdit
+                  ? "Select this Node and all its descendants"
+                  : "Select a Node first"
+            }
           >
             Select branch
+          </button>
+
+          <span>
+            Manual group: Ctrl/Cmd + click to add or remove a Node.
+            <br />
+            Shift + drag: replace; Ctrl/Cmd + Shift + drag: add.
+            {activeBranch && (
+              <> Clear branch selection before selecting manual members.</>
+            )}
+          </span>
+
+          {activeManualGroup && (
+            <>
+              <button
+                type="button"
+                onClick={() => setManualGroup(null)}
+              >
+                Clear group
+              </button>
+
+              <span>
+                Manual group: {activeManualGroup.nodeIds.size} selected;{" "}
+                {visibleManualCount} visible,{" "}
+                {activeManualGroup.nodeIds.size - visibleManualCount} hidden
+                <br />
+                Drag any member to move the group.
+                <br />
+                Focus a member: Arrow keys move 10;
+                Shift + Arrow moves 50.
+              </span>
+            </>
+          )}
+
+          <button
+            type="button"
+            disabled={!activeBranch}
+            onClick={() => {
+              if (!activeBranch) {
+                return;
+              }
+
+              setManualGroup({
+                nodeIds: new Set(activeBranch.nodeIds),
+              });
+
+              setBranchSelection(null);
+            }}
+          >
+            Convert to manual group
           </button>
 
           <button
@@ -2238,7 +2631,15 @@ return (
         <span>Selected: {selectedElement}</span>
       </div>
 
-      <div className="react-flow-container">
+      <div
+        className="react-flow-container"
+        style={{ position: "relative" }}
+        onPointerDownCapture={handleRectanglePointerDown}
+        onPointerMoveCapture={handleRectanglePointerMove}
+        onPointerUpCapture={handleRectanglePointerUp}
+        onPointerCancelCapture={handleRectanglePointerCancel}
+        onLostPointerCapture={handleRectanglePointerCancel}
+      >
         <ReactFlow<ReactFlowNode, ReactFlowEdge>
           nodes={previewNodes}
           edges={previewEdges}
@@ -2260,12 +2661,41 @@ return (
           nodesConnectable={false}
           edgesReconnectable={false}
           deleteKeyCode={null}
+          multiSelectionKeyCode={null}
+          selectionKeyCode={null}
+          selectionOnDrag={false}
           onlyRenderVisibleElements
           elevateEdgesOnSelect
         >
           <Background />
           <Controls />
         </ReactFlow>
+
+        {selectionRectangle && (
+          <div
+            style={{
+              position: "fixed",
+              left: Math.min(
+                selectionRectangle.startX,
+                selectionRectangle.endX,
+              ),
+              top: Math.min(
+                selectionRectangle.startY,
+                selectionRectangle.endY,
+              ),
+              width: Math.abs(
+                selectionRectangle.endX - selectionRectangle.startX,
+              ),
+              height: Math.abs(
+                selectionRectangle.endY - selectionRectangle.startY,
+              ),
+              border: "1px solid #22c55e",
+              background: "rgba(34, 197, 94, 0.12)",
+              pointerEvents: "none",
+              zIndex: 1000,
+            }}
+          />
+        )}
       </div>
 
       </div>
