@@ -55,6 +55,7 @@ import { NodeSearchSelect } from './NodeSearchSelect'
 import { GraphSearchPanel } from "./GraphSearchPanel";
 
 import { usePersistentLayout } from "./usePersistentLayout";
+import { LayoutControls } from "./LayoutControls";
 
 import { MyWayNode } from "./MyWayNode";
 import { MyWayEdge } from "./MyWayEdge";
@@ -242,6 +243,10 @@ export function ReactFlowGraph({
     fallback: () => {
       const elements = toReactFlowElements(graphData);
       return positionNodes(elements.nodes, elements.edges, "dagre");
+    },
+    onSwitched: () => {
+      setBranchSelection(null);
+      setManualGroup(null);
     },
     onRestored: () => {
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -475,6 +480,7 @@ export function ReactFlowGraph({
       }
 
       const target = event.target;
+      if (target instanceof Element && target.closest("dialog")) return;
 
       if (activeManualGroup) {
         if (!(target instanceof HTMLElement)) {
@@ -1975,33 +1981,7 @@ return (
 
       <div className="react-flow-sidebar__content">
         <div className="react-flow-toolbar">
-        <div className="react-flow-persistent-layout" aria-label="Saved layout">
-          <strong>Saved layout</strong>
-          <span>{layout.active?.name ?? "Unsaved initial layout"}</span>
-          <span role="status" aria-live="polite">
-            {layout.phase === "loading" ? "Loading layout…" :
-              layout.phase === "load-error" ? "Layout could not be loaded" :
-              layout.phase === "saving" ? "Saving layout…" :
-              layout.dirty ? "Unsaved changes" : "Saved"}
-          </span>
-          {layout.error && <p className="error" role="alert">{layout.error}</p>}
-          {layout.notice && <p>{layout.notice}</p>}
-          {layout.phase === "load-error" ? (
-            <button type="button" onClick={layout.retry}>Retry loading layout</button>
-          ) : (
-            <>
-              <button type="button" onClick={() => void layout.save()}
-                disabled={layout.blocked || !layout.dirty}>
-                {layout.phase === "saving" ? "Saving…" : "Save layout"}
-              </button>
-              <button type="button" onClick={layout.discard} disabled={!layout.canDiscard}>
-                Discard changes
-              </button>
-              {layout.error && <button type="button" disabled={layout.blocked}
-                onClick={() => void refreshGraphForLayout()}>Refresh graph</button>}
-            </>
-          )}
-        </div>
+        <LayoutControls layout={layout} onRefreshGraph={refreshGraphForLayout} />
         <div>
           <strong>Create Node</strong>
           <label>

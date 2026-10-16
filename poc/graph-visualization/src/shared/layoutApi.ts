@@ -13,6 +13,7 @@ async function request<T>(path: string, method = "GET", body?: unknown, signal?:
       `Layout request failed (${response.status})`;
     throw new Error(detail);
   }
+  if (response.status === 204) return undefined as T;
   return await response.json() as T;
 }
 
@@ -30,4 +31,12 @@ export function createLayout(name: string, positions: LayoutPosition[]): Promise
 
 export function saveLayout(id: number, positions: LayoutPosition[]): Promise<LayoutDetail> {
   return request(`/${id}/positions`, "PUT", { positions });
+}
+
+export function updateLayout(id: number, data: { name?: string; is_default?: true }): Promise<SavedLayout> {
+  return request(`/${id}`, "PATCH", data);
+}
+
+export async function deleteLayout(id: number): Promise<void> {
+  await request(`/${id}`, "DELETE");
 }
