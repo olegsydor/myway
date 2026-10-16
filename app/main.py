@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.routers.nodes import router as nodes_router
 from app.routers.edges import router as edges_router
 from app.routers.graph import router as graph_router
+from app.routers.layouts import router as layouts_router
 
 from app.routers.node_types import router as node_types_router
 from app.routers.edge_types import router as edge_types_router
@@ -21,6 +22,7 @@ app = FastAPI(
 app.include_router(edges_router)
 app.include_router(nodes_router)
 app.include_router(graph_router)
+app.include_router(layouts_router)
 app.include_router(node_types_router)
 app.include_router(edge_types_router)
 
