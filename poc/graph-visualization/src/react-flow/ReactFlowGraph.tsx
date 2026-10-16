@@ -54,6 +54,8 @@ import { NodeSearchSelect } from './NodeSearchSelect'
 
 import { GraphSearchPanel } from "./GraphSearchPanel";
 
+import { usePersistentLayout } from "./usePersistentLayout";
+
 import { MyWayNode } from "./MyWayNode";
 import { MyWayEdge } from "./MyWayEdge";
 
@@ -221,9 +223,46 @@ export function ReactFlowGraph({
   const currentLayoutRef = useRef<LayoutName>("dagre");
 
   const [nodes, setNodes] = useNodesState<ReactFlowNode>([]);
-  const [isDeletingNode, setIsDeletingNode] = useState(false);
 
   const [edges, setEdges, onEdgesChange] = useEdgesState<ReactFlowEdge>([]);
+
+  const [isDeletingNode, setIsDeletingNode] = useState(false);
+  const [isCreatingNode, setIsCreatingNode] = useState(false);
+  const [isUpdatingNode, setIsUpdatingNode] = useState(false);
+  const [isCreatingEdge, setIsCreatingEdge] = useState(false);
+  const [isUpdatingEdge, setIsUpdatingEdge] = useState(false);
+  const [isDeletingEdge, setIsDeletingEdge] = useState(false);
+  const [isRefreshingGraph, setIsRefreshingGraph] = useState(false);
+  const layout = usePersistentLayout({
+    nodes,
+    nodeIds: graphData.nodes.map((node) => node.id),
+    setNodes,
+    graphBusy: isCreatingNode || isUpdatingNode || isDeletingNode ||
+      isCreatingEdge || isUpdatingEdge || isDeletingEdge || isRefreshingGraph,
+    fallback: () => {
+      const elements = toReactFlowElements(graphData);
+      return positionNodes(elements.nodes, elements.edges, "dagre");
+    },
+    onRestored: () => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        void instanceRef.current?.fitView({ padding: 0.1, duration: 300 });
+      }));
+    },
+  });
+
+  async function refreshGraphForLayout() {
+    if (layout.blocked || layout.isLocked()) return;
+    setIsRefreshingGraph(true);
+    try {
+      await onGraphChanged();
+      setActionMessage("Graph refreshed; working positions preserved");
+    } catch (cause) {
+      setActionMessage(cause instanceof Error ? cause.message : "Failed to refresh graph");
+    } finally {
+      setIsRefreshingGraph(false);
+    }
+  }
+
 
   const [selectedElement, setSelectedElement] = useState("None");
   const [selectedNodeForEdit, setSelectedNodeForEdit] =
@@ -260,7 +299,7 @@ export function ReactFlowGraph({
   function handleRectanglePointerDown(
     event: ReactPointerEvent<HTMLDivElement>,
   ) {
-    if (event.button !== 0 || !event.shiftKey) {
+    if (layout.isLocked() || event.button !== 0 || !event.shiftKey) {
       return;
     }
 
@@ -424,6 +463,7 @@ export function ReactFlowGraph({
     }
 
     const handleBranchKeyDown = (event: KeyboardEvent) => {
+      if (layout.isLocked()) return;
       if (
         event.defaultPrevented ||
         event.isComposing ||
@@ -525,10 +565,13 @@ export function ReactFlowGraph({
     return () => {
       window.removeEventListener("keydown", handleBranchKeyDown, true);
     };
-  }, [activeBranch, activeManualGroup, nodes, setNodes]);
+  }, [activeBranch, activeManualGroup, nodes, setNodes, layout.isLocked]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<ReactFlowNode>[]) => {
+      if (layout.isLocked()) {
+        changes = changes.filter((change) => change.type === "select" || change.type === "dimensions");
+      }
       setNodes((currentNodes) => {
         const memberIds =
           activeBranch?.nodeIds ?? activeManualGroup?.nodeIds;
@@ -584,7 +627,7 @@ export function ReactFlowGraph({
         return translateMembers(baselineNodes, memberIds, dx, dy);
       });
     },
-    [activeBranch, activeManualGroup, setNodes],
+    [activeBranch, activeManualGroup, setNodes, layout.isLocked],
   );
 
   const visibleBranchCount = activeBranch
@@ -716,17 +759,12 @@ export function ReactFlowGraph({
   const [newNodeProperties, setNewNodeProperties] = useState<PropertyRow[]>([]);
   const [newNodeName, setNewNodeName] = useState("");
   const [newNodeDescription, setNewNodeDescription] = useState("");
-  const [isCreatingNode, setIsCreatingNode] = useState(false);
-  const [isUpdatingNode, setIsUpdatingNode] = useState(false);
 
   const [newEdgeSourceId, setNewEdgeSourceId] = useState("");
   const [newEdgeTargetId, setNewEdgeTargetId] = useState("");
   const [newEdgeTypeId, setNewEdgeTypeId] = useState("");
   const [newEdgeDescription, setNewEdgeDescription] = useState("");
   const [newEdgeProperties, setNewEdgeProperties] = useState<PropertyRow[]>([]);
-  const [isCreatingEdge, setIsCreatingEdge] = useState(false);
-  const [isUpdatingEdge, setIsUpdatingEdge] = useState(false);
-  const [isDeletingEdge, setIsDeletingEdge] = useState(false);
   const nodeTypes = [
     ...new Set(graphData.nodes.map((node) => node.type)),
   ].sort();
@@ -1213,6 +1251,7 @@ export function ReactFlowGraph({
   }
 
   async function handleUpdateEdge() {
+    if (layout.isLocked()) return;
     if (!selectedEdgeForEdit) {
       return;
     }
@@ -1270,6 +1309,7 @@ export function ReactFlowGraph({
   }
 
   async function handleDeleteEdge() {
+    if (layout.isLocked()) return;
     if (!selectedEdgeForEdit?.data) {
       return;
     }
@@ -1582,6 +1622,10 @@ export function ReactFlowGraph({
 
   const runLayout = useCallback(
     (layoutName: LayoutName) => {
+      if (layout.isLocked() || layout.blocked) return;
+      if (layout.dirty && !window.confirm(
+        "This will replace the current unsaved node arrangement. Continue?",
+      )) return;
       setBranchSelection(null);
 
       const layoutStartedAt = performance.now();
@@ -1606,7 +1650,7 @@ export function ReactFlowGraph({
         });
       });
     },
-    [edges, nodes, setNodes],
+    [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty],
   );
 
   useEffect(() => {
@@ -1751,6 +1795,7 @@ export function ReactFlowGraph({
   }, [graphData, setEdges, setNodes]);
 
   async function handleCreateNode() {
+    if (layout.isLocked()) return;
     const name = newNodeName.trim();
     const nodeTypeId = Number(newNodeTypeId);
 
@@ -1794,6 +1839,7 @@ export function ReactFlowGraph({
   }
 
   async function handleCreateEdge() {
+    if (layout.isLocked()) return;
     const sourceNodeId = Number(newEdgeSourceId);
     const targetNodeId = Number(newEdgeTargetId);
     const edgeTypeId = Number(newEdgeTypeId);
@@ -1846,6 +1892,7 @@ export function ReactFlowGraph({
   }
 
   async function handleUpdateNode() {
+    if (layout.isLocked()) return;
     if (!selectedNodeForEdit) {
       return;
     }
@@ -1891,6 +1938,7 @@ export function ReactFlowGraph({
   }
 
   async function handleDeleteNode() {
+    if (layout.isLocked()) return;
     if (!selectedNodeForEdit) {
       return;
     }
@@ -1927,6 +1975,33 @@ return (
 
       <div className="react-flow-sidebar__content">
         <div className="react-flow-toolbar">
+        <div className="react-flow-persistent-layout" aria-label="Saved layout">
+          <strong>Saved layout</strong>
+          <span>{layout.active?.name ?? "Unsaved initial layout"}</span>
+          <span role="status" aria-live="polite">
+            {layout.phase === "loading" ? "Loading layout…" :
+              layout.phase === "load-error" ? "Layout could not be loaded" :
+              layout.phase === "saving" ? "Saving layout…" :
+              layout.dirty ? "Unsaved changes" : "Saved"}
+          </span>
+          {layout.error && <p className="error" role="alert">{layout.error}</p>}
+          {layout.notice && <p>{layout.notice}</p>}
+          {layout.phase === "load-error" ? (
+            <button type="button" onClick={layout.retry}>Retry loading layout</button>
+          ) : (
+            <>
+              <button type="button" onClick={() => void layout.save()}
+                disabled={layout.blocked || !layout.dirty}>
+                {layout.phase === "saving" ? "Saving…" : "Save layout"}
+              </button>
+              <button type="button" onClick={layout.discard} disabled={!layout.canDiscard}>
+                Discard changes
+              </button>
+              {layout.error && <button type="button" disabled={layout.blocked}
+                onClick={() => void refreshGraphForLayout()}>Refresh graph</button>}
+            </>
+          )}
+        </div>
         <div>
           <strong>Create Node</strong>
           <label>
@@ -1934,7 +2009,7 @@ return (
             <select
               value={newNodeTypeId}
               onChange={(event) => setNewNodeTypeId(event.target.value)}
-              disabled={isCreatingNode || availableNodeTypes.length === 0}
+              disabled={layout.locked || isCreatingNode || availableNodeTypes.length === 0}
             >
               {availableNodeTypes.map((nodeType) => (
                 <option key={nodeType.id} value={nodeType.id}>
@@ -2032,7 +2107,7 @@ return (
           <button
             type="button"
             onClick={() => void handleCreateNode()}
-            disabled={isCreatingNode || availableNodeTypes.length === 0}
+            disabled={layout.locked || isCreatingNode || availableNodeTypes.length === 0}
           >
             {isCreatingNode ? "Creating…" : "Add Node"}
           </button>
@@ -2146,7 +2221,7 @@ return (
             type="button"
             onClick={() => void handleCreateEdge()}
             disabled={
-              isCreatingEdge ||
+              layout.locked || isCreatingEdge ||
               graphData.nodes.length === 0 ||
               availableEdgeTypes.length === 0
             }
@@ -2156,16 +2231,16 @@ return (
         </div>
 
         <div>
-          <strong>Layout</strong>
-          <button type="button" onClick={() => runLayout("grid")}>
+          <strong>Arrange nodes</strong>
+          <button type="button" disabled={layout.blocked} onClick={() => runLayout("grid")}>
             Grid
           </button>
 
-          <button type="button" onClick={() => runLayout("circle")}>
+          <button type="button" disabled={layout.blocked} onClick={() => runLayout("circle")}>
             Circle
           </button>
 
-          <button type="button" onClick={() => runLayout("dagre")}>
+          <button type="button" disabled={layout.blocked} onClick={() => runLayout("dagre")}>
             Dagre
           </button>
 
@@ -2464,7 +2539,7 @@ return (
               <button
                 type="button"
                 onClick={() => void handleUpdateNode()}
-                disabled={isUpdatingNode || isDeletingNode}
+                disabled={layout.locked || isUpdatingNode || isDeletingNode}
               >
                 {isUpdatingNode ? "Saving..." : "Save Node"}
               </button>
@@ -2472,7 +2547,7 @@ return (
               <button
                 type="button"
                 onClick={() => void handleDeleteNode()}
-                disabled={isUpdatingNode || isDeletingNode}
+                disabled={layout.locked || isUpdatingNode || isDeletingNode}
               >
                 {isDeletingNode ? "Deleting..." : "Delete Node"}
               </button>
@@ -2586,7 +2661,7 @@ return (
               <button
                 type="button"
                 onClick={() => void handleUpdateEdge()}
-                disabled={isUpdatingEdge || isDeletingEdge}
+                disabled={layout.locked || isUpdatingEdge || isDeletingEdge}
               >
                 {isUpdatingEdge ? "Saving..." : "Save Edge"}
               </button>
@@ -2594,7 +2669,7 @@ return (
               <button
                 type="button"
                 onClick={() => void handleDeleteEdge()}
-                disabled={isUpdatingEdge || isDeletingEdge}
+                disabled={layout.locked || isUpdatingEdge || isDeletingEdge}
               >
                 {isDeletingEdge ? "Deleting..." : "Delete Edge"}
               </button>
@@ -2641,7 +2716,8 @@ return (
         onLostPointerCapture={handleRectanglePointerCancel}
       >
         <ReactFlow<ReactFlowNode, ReactFlowEdge>
-          nodes={previewNodes}
+          nodes={layout.locked ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes}
+          nodesDraggable={!layout.locked}
           edges={previewEdges}
           nodeTypes={reactFlowNodeTypes}
           edgeTypes={reactFlowEdgeTypes}
