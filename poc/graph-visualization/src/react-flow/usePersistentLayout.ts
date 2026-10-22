@@ -5,6 +5,7 @@ import {
   type LayoutDetail, type LayoutPosition, type SavedLayout,
 } from "../shared/persistentLayouts";
 import type { ReactFlowNode } from "./adapter";
+import type { LayoutDiagnostics } from "./layoutDiagnostics";
 
 interface Options {
   nodes: ReactFlowNode[];
@@ -14,6 +15,7 @@ interface Options {
   graphBusy: boolean;
   onRestored: () => void;
   onSwitched: () => void;
+  diagnostics?: LayoutDiagnostics | null;
 }
 
 type Phase = "loading" | "ready" | "saving" | "switching" | "managing" | "load-error";
@@ -41,8 +43,66 @@ export function usePersistentLayout(options: Options) {
 
   const ready = graphNodesReady(options.nodes, options.nodeIds);
   const dragging = options.nodes.some((node) => node.dragging);
-  const dirty = useMemo(() => layoutIsDirty(options.nodes, saved), [options.nodes, saved]);
+  const dirty = useMemo(() => {
+  const startedAt = performance.now();
+
+  const result = layoutIsDirty(options.nodes, saved);
+
+  options.diagnostics?.record({
+    kind: "dirty-check",
+    atMs: startedAt,
+    durationMs: performance.now() - startedAt,
+    nodeCount: options.nodes.length,
+    result: result ? "dirty" : "clean",
+  });
+
+  return result;
+}, [options.nodes, saved, options.diagnostics]);
   const blocked = phase !== "ready" || options.graphBusy || dragging || !ready;
+    useEffect(() => {
+    const diagnostics = options.diagnostics;
+
+    if (!diagnostics) return;
+
+    const reasons: string[] = [];
+
+    if (phase !== "ready") {
+      reasons.push(`phase:${phase}`);
+    }
+
+    if (options.graphBusy) {
+      reasons.push("graph-busy");
+    }
+
+    if (dragging) {
+      reasons.push("dragging");
+    }
+
+    if (!ready) {
+      reasons.push("graph-not-ready");
+    }
+
+    diagnostics.record({
+      kind: "layout-phase",
+      atMs: performance.now(),
+      phase,
+      nodeCount: options.nodes.length,
+    });
+
+    diagnostics.record({
+      kind: "layout-blocked",
+      atMs: performance.now(),
+      phase,
+      reasons,
+      result: reasons.length > 0 ? "blocked" : "available",
+    });
+  }, [
+    phase,
+    options.graphBusy,
+    dragging,
+    ready,
+    options.diagnostics,
+  ]);
 
   useEffect(() => {
     alive.current = true;

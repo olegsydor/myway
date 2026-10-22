@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  Profiler,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -68,6 +69,11 @@ import {
   translateMembers,
   type ManualGroup,
 } from "../shared/manualGroups";
+
+import {
+  LayoutDiagnostics,
+  layoutDiagnosticsEnabled,
+} from "./layoutDiagnostics";
 
 interface ReactFlowGraphProps {
   graph: GraphResponse;
@@ -221,9 +227,39 @@ export function ReactFlowGraph({
     ReactFlowEdge
   > | null>(null);
 
+  const diagnosticsRef = useRef<LayoutDiagnostics | null>(null);
+
+if (
+  diagnosticsRef.current === null &&
+  layoutDiagnosticsEnabled(window.location.search)
+) {
+  diagnosticsRef.current = new LayoutDiagnostics(1000);
+}
+
+useEffect(() => {
+  const diagnostics = diagnosticsRef.current;
+
+  if (!diagnostics) return;
+
+  diagnostics.startLongTaskObserver();
+
+  return () => {
+    diagnostics.dispose();
+    diagnosticsRef.current = null;
+  };
+}, []);
+
   const currentLayoutRef = useRef<LayoutName>("dagre");
 
   const [nodes, setNodes] = useNodesState<ReactFlowNode>([]);
+
+  useEffect(() => {
+  diagnosticsRef.current?.record({
+    kind: "graph-render",
+    atMs: performance.now(),
+    nodeCount: nodes.length,
+  });
+});
 
   const [edges, setEdges, onEdgesChange] = useEdgesState<ReactFlowEdge>([]);
 
@@ -236,6 +272,7 @@ export function ReactFlowGraph({
   const [isRefreshingGraph, setIsRefreshingGraph] = useState(false);
   const layout = usePersistentLayout({
     nodes,
+    diagnostics: diagnosticsRef.current,
     nodeIds: graphData.nodes.map((node) => node.id),
     setNodes,
     graphBusy: isCreatingNode || isUpdatingNode || isDeletingNode ||
@@ -254,6 +291,28 @@ export function ReactFlowGraph({
       }));
     },
   });
+
+  function exportDiagnostics() {
+  const diagnostics = diagnosticsRef.current;
+
+  if (!diagnostics) return;
+
+  const json = diagnostics.exportJson();
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `myway-layout-diagnostics-${Date.now()}.json`;
+
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+}
 
   async function refreshGraphForLayout() {
     if (layout.blocked || layout.isLocked()) return;
@@ -573,12 +632,44 @@ export function ReactFlowGraph({
     };
   }, [activeBranch, activeManualGroup, nodes, setNodes, layout.isLocked]);
 
-  const handleNodesChange = useCallback(
-    (changes: NodeChange<ReactFlowNode>[]) => {
-      if (layout.isLocked()) {
-        changes = changes.filter((change) => change.type === "select" || change.type === "dimensions");
+const handleNodesChange = useCallback(
+  (changes: NodeChange<ReactFlowNode>[]) => {
+    const startedAt = performance.now();
+    const diagnostics = diagnosticsRef.current;
+
+    if (diagnostics) {
+      const changeTypes: Record<string, number> = {};
+
+      for (const change of changes) {
+        changeTypes[change.type] =
+          (changeTypes[change.type] ?? 0) + 1;
       }
-      setNodes((currentNodes) => {
+
+      diagnostics.record({
+        kind: "node-change-batch",
+        atMs: startedAt,
+        nodeCount: nodes.length,
+        changeCount: changes.length,
+        changeTypes,
+      });
+    }
+
+    if (layout.isLocked()) {
+      changes = changes.filter(
+        (change) =>
+          change.type === "select" ||
+          change.type === "dimensions",
+      );
+    }
+    setNodes((currentNodes) => {
+      const processingStartedAt = performance.now();
+
+      const memberIdsCountForDiagnostics =
+        activeBranch?.nodeIds.size ??
+        activeManualGroup?.nodeIds.size ??
+        1;
+
+      try {
         const memberIds =
           activeBranch?.nodeIds ?? activeManualGroup?.nodeIds;
 
@@ -630,7 +721,16 @@ export function ReactFlowGraph({
             : node;
         });
 
-        return translateMembers(baselineNodes, memberIds, dx, dy);
+      return translateMembers(baselineNodes, memberIds, dx, dy);
+        } finally {
+          diagnostics?.record({
+            kind: "movement",
+            atMs: processingStartedAt,
+            durationMs: performance.now() - processingStartedAt,
+            nodeCount: currentNodes.length,
+            movedCount: memberIdsCountForDiagnostics,
+          });
+        }
       });
     },
     [activeBranch, activeManualGroup, setNodes, layout.isLocked],
@@ -1982,6 +2082,14 @@ return (
       <div className="react-flow-sidebar__content">
         <div className="react-flow-toolbar">
         <LayoutControls layout={layout} onRefreshGraph={refreshGraphForLayout} />
+        {diagnosticsRef.current && (
+          <button
+            type="button"
+            onClick={exportDiagnostics}
+          >
+            Export diagnostics
+          </button>
+        )}
         <div>
           <strong>Create Node</strong>
           <label>
@@ -2712,6 +2820,27 @@ return (
         onPointerCancelCapture={handleRectanglePointerCancel}
         onLostPointerCapture={handleRectanglePointerCancel}
       >
+        <Profiler
+          id="MyWayReactFlow"
+          onRender={(
+            _id,
+            phase,
+            actualDuration,
+            baseDuration,
+            _startTime,
+            commitTime,
+          ) => {
+            diagnosticsRef.current?.record({
+              kind: "react-commit",
+              atMs: commitTime,
+              durationMs: actualDuration,
+              baseDurationMs: baseDuration,
+              commitTimeMs: commitTime,
+              nodeCount: nodes.length,
+              phase,
+            });
+          }}
+        >
         <ReactFlow<ReactFlowNode, ReactFlowEdge>
           nodes={layout.locked ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes}
           nodesDraggable={!layout.locked}
@@ -2743,7 +2872,7 @@ return (
           <Background />
           <Controls />
         </ReactFlow>
-
+      </Profiler>
         {selectionRectangle && (
           <div
             style={{
