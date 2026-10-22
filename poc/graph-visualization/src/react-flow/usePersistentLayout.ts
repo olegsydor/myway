@@ -20,6 +20,7 @@ type Phase = "loading" | "ready" | "saving" | "switching" | "managing" | "load-e
 
 export function usePersistentLayout(options: Options) {
   const [phase, setPhase] = useState<Phase>("loading");
+  const [startupReady, setStartupReady] = useState(false);
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [active, setActive] = useState<SavedLayout | null>(null);
   const [saved, setSaved] = useState<LayoutPosition[] | null>(null);
@@ -81,6 +82,7 @@ export function usePersistentLayout(options: Options) {
     setNotice(pending.notice);
     setPending(null);
     setPhase("ready");
+    setStartupReady(true);
   }, [pending, ready, setNodes]);
 
   useEffect(() => {
@@ -226,7 +228,7 @@ export function usePersistentLayout(options: Options) {
   }
 
   return {
-    active, layouts, dirty, phase, error, notice, blocked,
+    active, layouts, dirty, phase, startupReady, error, notice, blocked,
     locked: phase !== "ready", isLocked, save, discard, saveAsNew, switchTo, rename, setDefault, deleteActive,
     canDelete, canDiscard: active !== null && dirty && !blocked,
     clearError: () => setError(""),

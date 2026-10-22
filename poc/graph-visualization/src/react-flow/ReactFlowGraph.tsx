@@ -2686,6 +2686,23 @@ return (
         <span>Selected: {selectedElement}</span>
       </div>
 
+      {!layout.startupReady ? (
+        <div
+          className="react-flow-container"
+          role="status"
+          aria-live="polite"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {layout.phase === "load-error"
+            ? "Graph layout could not be loaded. Use Retry loading layout."
+            : "Loading graph and layout…"}
+        </div>
+      ) : (
+
       <div
         className="react-flow-container"
         style={{ position: "relative" }}
@@ -2753,6 +2770,7 @@ return (
           />
         )}
       </div>
+      )}
 
       </div>
 
