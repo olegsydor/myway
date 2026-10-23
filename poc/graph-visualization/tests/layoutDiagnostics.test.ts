@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   LayoutDiagnostics,
   layoutDiagnosticsEnabled,
-} from "../src/react-flow/layoutDiagnostics";
+} from "../src/react-flow/layoutDiagnostics.ts";
 
 test("keeps only the newest events in chronological order", () => {
   const diagnostics = new LayoutDiagnostics(3);
