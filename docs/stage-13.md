@@ -1,7 +1,7 @@
 # Stage 13 — Reliability, Diagnostics and Local Layout Recovery
 
-**Status: Completed and accepted**  
-**Baseline:** `c5f8f58` — Stage 12 completion  
+**Status: Completed and accepted**
+**Baseline:** `c5f8f58` — Stage 12 completion
 **Final implementation checkpoint:** `7c3a2b4`
 
 ## 1. Objective
@@ -188,4 +188,3 @@ The explicit-save server persistence model remains unchanged.
 The remaining limitations and specification deviations are documented and accepted rather than treated as completed features.
 
 The next development stage begins from the completed Stage 13 checkpoint.
-
