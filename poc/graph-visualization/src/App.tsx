@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import './App.css'
 import { fetchGraph } from './shared/api'
 import type { GraphResponse } from './shared/types'
+import { layoutRecoveryScope } from './react-flow/layoutRecoveryScope'
 
 const ReactFlowGraph = lazy(() =>
   import('./react-flow/ReactFlowGraph').then((module) => ({
@@ -65,6 +66,7 @@ function App() {
             <ReactFlowGraph
               graph={graph}
               onGraphChanged={refreshGraph}
+              recoveryScope={layoutRecoveryScope(graph.user_id)}
             />
           </Suspense>
         )}

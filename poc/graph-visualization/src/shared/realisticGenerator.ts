@@ -376,6 +376,7 @@ export function generateRealisticGraph(
   )
 
   return {
+    user_id: 0,
     nodes,
     edges,
     meta: {

@@ -31,6 +31,7 @@ async def test_get_empty_graph(client, db_session):
 
     assert response.status_code == 200
     assert response.json() == {
+        "user_id": user.id,
         "nodes": [],
         "edges": [],
         "meta": {
@@ -74,6 +75,7 @@ async def test_get_graph_with_one_node(client, db_session):
 
     assert response.status_code == 200
     assert response.json() == {
+        "user_id": user.id,
         "nodes": [
             {
                 "id": node.id,

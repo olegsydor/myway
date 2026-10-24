@@ -220,6 +220,7 @@ export function generateGraph(
   }
 
   return {
+    user_id: 0,
     nodes,
     edges,
     meta: {

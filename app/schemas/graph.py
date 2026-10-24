@@ -26,6 +26,7 @@ class GraphMeta(BaseModel):
 
 
 class GraphResponse(BaseModel):
+    user_id: int
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     meta: GraphMeta

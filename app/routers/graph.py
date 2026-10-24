@@ -56,6 +56,7 @@ async def get_graph_endpoint(
     ]
 
     return GraphResponse(
+        user_id=current_user.id,
         nodes=graph_nodes,
         edges=graph_edges,
         meta=GraphMeta(

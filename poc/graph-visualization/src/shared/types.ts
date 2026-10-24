@@ -21,6 +21,7 @@ export interface GraphMeta {
 }
 
 export interface GraphResponse {
+  user_id: number
   nodes: GraphNode[]
   edges: GraphEdge[]
   meta: GraphMeta

@@ -6,10 +6,21 @@ import {
 } from "../shared/persistentLayouts";
 import type { ReactFlowNode } from "./adapter";
 import type { LayoutDiagnostics } from "./layoutDiagnostics";
+import {
+  checkStartupRecovery,
+} from "./layoutRecoveryStartup";
+
+
+import type {
+  LayoutRecoveryRecord,
+} from "./layoutRecovery";
+import { LayoutRecoveryController } from "./layoutRecoveryController";
+import { createRecoveryRecord } from "./layoutRecovery";
 
 interface Options {
   nodes: ReactFlowNode[];
   nodeIds: number[];
+  recoveryScope: string | null;
   setNodes: Dispatch<SetStateAction<ReactFlowNode[]>>;
   fallback: () => ReactFlowNode[];
   graphBusy: boolean;
@@ -18,7 +29,14 @@ interface Options {
   diagnostics?: LayoutDiagnostics | null;
 }
 
-type Phase = "loading" | "ready" | "saving" | "switching" | "managing" | "load-error";
+type Phase =
+  | "loading"
+  | "recovery"
+  | "ready"
+  | "saving"
+  | "switching"
+  | "managing"
+  | "load-error";
 
 export function usePersistentLayout(options: Options) {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -30,10 +48,33 @@ export function usePersistentLayout(options: Options) {
   const [notice, setNotice] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [pending, setPending] = useState<{ layouts: SavedLayout[]; layout: LayoutDetail | null; notice: string } | null>(null);
+  const [recoveryOffer, setRecoveryOffer] =
+    useState<LayoutRecoveryRecord | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const latest = useRef(options);
   const inFlight = useRef(false);
   const alive = useRef(true);
   const lockedRef = useRef(true);
+  const recoveryControllerRef =
+    useRef<LayoutRecoveryController | null>(null);
+  useEffect(() => {
+  const controller = new LayoutRecoveryController({
+    debounceMs: 500,
+    onError: (error) => {
+      console.warn("Layout recovery operation failed:", error);
+    },
+  });
+
+  recoveryControllerRef.current = controller;
+
+  return () => {
+    controller.dispose();
+
+    if (recoveryControllerRef.current === controller) {
+      recoveryControllerRef.current = null;
+    }
+  };
+}, []);
   useLayoutEffect(() => {
     latest.current = options;
     lockedRef.current = phase !== "ready" || inFlight.current;
@@ -125,25 +166,91 @@ export function usePersistentLayout(options: Options) {
     return () => { cancelled = true; alive.current = false; controller.abort(); };
   }, [attempt]);
 
-  useEffect(() => {
-    if (!pending || !ready) return;
-    if (pending.layout) {
-      const positions = pending.layout.positions;
+useEffect(() => {
+  if (!pending || !ready) return;
+
+  let cancelled = false;
+
+  const startup = pending;
+  const scope = options.recoveryScope;
+
+  async function initializeLayout() {
+    let offer: LayoutRecoveryRecord | null = null;
+
+    if (scope !== null && startup.layout !== null) {
+      const layoutId = startup.layout.id;
+
+      const result = await checkStartupRecovery(
+        () => {
+          const controller = recoveryControllerRef.current;
+
+          if (!controller) {
+            return Promise.reject(
+              new Error("Recovery controller unavailable"),
+            );
+          }
+
+          return controller.read(scope, layoutId);
+        },
+        scope,
+        layoutId,
+        latest.current.nodeIds,
+        startup.layout.positions,
+      );
+
+      if (result.status === "available") {
+        offer = result.record;
+      } else if (
+        result.status === "unavailable" ||
+        result.status === "incompatible"
+      ) {
+        console.warn(
+          "Layout recovery could not be offered:",
+          result.status === "unavailable"
+            ? result.error
+            : result.reason,
+        );
+      }
+    }
+
+    if (cancelled) return;
+
+    if (startup.layout) {
+      const positions = startup.layout.positions;
       const fallback = latest.current.fallback();
-      setNodes((nodes) => restoreLayoutPositions(nodes, positions, fallback));
-      setActive(pending.layout);
+
+      setNodes((nodes) =>
+        restoreLayoutPositions(nodes, positions, fallback),
+      );
+
+      setActive(startup.layout);
       setSaved(positions);
       latest.current.onRestored();
     } else {
       setActive(null);
       setSaved(null);
     }
-    setLayouts(pending.layouts);
-    setNotice(pending.notice);
+
+    setRecoveryOffer(offer);
+    setLayouts(startup.layouts);
+    setNotice(startup.notice);
     setPending(null);
-    setPhase("ready");
-    setStartupReady(true);
-  }, [pending, ready, setNodes]);
+
+    if (offer) {
+      setPhase("recovery");
+      setStartupReady(false);
+    } else {
+      setPhase("ready");
+      setStartupReady(true);
+    }
+  }
+
+  void initializeLayout();
+
+  return () => {
+    cancelled = true;
+  };
+}, [pending, ready, options.recoveryScope, setNodes]);
 
   useEffect(() => {
     if (!dirty || phase === "loading" || phase === "load-error") return;
@@ -151,6 +258,76 @@ export function usePersistentLayout(options: Options) {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, phase]);
+
+  useEffect(() => {
+    const scope = options.recoveryScope;
+    const controller = recoveryControllerRef.current;
+
+    console.log("[Recovery] state", {
+      hasController: Boolean(controller),
+      scope,
+      activeLayoutId: active?.id ?? null,
+      hasSaved: saved !== null,
+      startupReady,
+      phase,
+      ready,
+      dirty,
+      dragging,
+      graphBusy: options.graphBusy,
+    });
+    if (
+      !controller ||
+      !scope ||
+      !active ||
+      !saved ||
+      !startupReady ||
+      phase !== "ready" ||
+      !ready ||
+      !dirty ||
+      dragging ||
+      options.graphBusy
+    ) {
+      return;
+    }
+
+    try {
+      const record = createRecoveryRecord(
+        scope,
+        active.id,
+        options.nodes,
+        saved,
+      );
+
+      const generation = controller.getGeneration(
+        scope,
+        active.id,
+      );
+
+      controller.schedule(record, generation);
+      console.log("[Recovery] scheduled", {
+        scope,
+        layoutId: active.id,
+        positions: record.positions.length,
+        generation,
+      });
+    } catch (cause) {
+      console.warn(
+        "Failed to prepare layout recovery snapshot:",
+        cause,
+      );
+    }
+  }, [
+    options.recoveryScope,
+    options.nodes,
+    options.graphBusy,
+    active,
+    saved,
+    startupReady,
+    phase,
+    ready,
+    dirty,
+    dragging,
+  ]);
 
   function remember(accepted: SavedLayout) {
     setLayouts((previous) => {
@@ -196,9 +373,36 @@ export function usePersistentLayout(options: Options) {
     }
   }
 
+  async function clearLocalRecovery(
+    layoutId: number | null,
+  ): Promise<void> {
+    const controller = recoveryControllerRef.current;
+    const scope = latest.current.recoveryScope;
+
+    if (!controller || !scope) return;
+
+    try {
+      await controller.clear(scope, layoutId);
+    } catch (cause) {
+      console.warn(
+        "Failed to clear local layout recovery:",
+        cause,
+      );
+    }
+  }
+
   async function persistCurrent() {
-    const positions = positionSnapshot(latest.current.nodes);
-    const accepted = active ? await saveLayout(active.id, positions) : await createLayout("Main", positions);
+    const current = latest.current;
+    const positions = positionSnapshot(current.nodes);
+    const previousLayoutId = active?.id ?? null;
+
+    const accepted = active
+      ? await saveLayout(active.id, positions)
+      : await createLayout("Main", positions);
+
+    // Server save succeeded. Invalidate the old local recovery.
+    await clearLocalRecovery(previousLayoutId);
+
     if (alive.current) acceptSnapshot(accepted);
   }
 
@@ -211,7 +415,15 @@ export function usePersistentLayout(options: Options) {
 
   function saveAsNew(name: string): Promise<boolean> {
     return operate("saving", async () => {
-      const accepted = await createLayout(name.trim(), positionSnapshot(latest.current.nodes));
+      const previousLayoutId = active?.id ?? null;
+
+      const accepted = await createLayout(
+        name.trim(),
+        positionSnapshot(latest.current.nodes),
+      );
+
+      await clearLocalRecovery(previousLayoutId);
+
       if (alive.current) {
         acceptSnapshot(accepted);
         latest.current.onSwitched();
@@ -220,16 +432,36 @@ export function usePersistentLayout(options: Options) {
     });
   }
 
-  function switchTo(id: number, choice: "save" | "discard" | "cancel"): Promise<boolean> {
+  function switchTo(
+    id: number,
+    choice: "save" | "discard" | "cancel",
+  ): Promise<boolean> {
     if (choice === "cancel") return Promise.resolve(false);
     if (id === active?.id) return Promise.resolve(true);
+
     return operate("switching", async () => {
-      if (choice === "save") await persistCurrent();
+      const previousLayoutId = active?.id ?? null;
+
+      if (choice === "save") {
+        await persistCurrent();
+      }
+
       if (!alive.current) return;
+
       const accepted = await fetchLayout(id);
-      // Fetch success is required before either coordinates or active identity
-      // changes. A failed discard-and-switch preserves the unsaved canvas.
-      if (alive.current) { applyLayout(accepted); setNotice("Layout opened"); }
+
+      // Fetch success is required before discarding
+      // the current unsaved canvas.
+      if (!alive.current) return;
+
+      if (choice === "discard") {
+        await clearLocalRecovery(previousLayoutId);
+      }
+
+      if (alive.current) {
+        applyLayout(accepted);
+        setNotice("Layout opened");
+      }
     });
   }
 
@@ -267,7 +499,11 @@ export function usePersistentLayout(options: Options) {
       // layout and leave the user with no usable destination on the canvas.
       const destination = await fetchLayout(defaultLayout.id);
       if (!alive.current) return;
-      await deleteLayout(active.id);
+      const deletedLayoutId = active.id;
+
+      await deleteLayout(deletedLayoutId);
+      await clearLocalRecovery(deletedLayoutId);
+
       if (alive.current) {
         setLayouts((previous) => previous.filter((layout) => layout.id !== active.id));
         applyLayout(destination);
@@ -276,19 +512,129 @@ export function usePersistentLayout(options: Options) {
     });
   }
 
-  function discard() {
-    if (blocked || lockedRef.current || saved === null) return;
-    const fallback = latest.current.fallback();
-    options.setNodes((nodes) => restoreLayoutPositions(nodes, saved, fallback));
-    setError("");
-    const ids = new Set(saved.map((position) => position.node_id));
-    const hasMissing = latest.current.nodes.some((node) => !ids.has(node.data.originalId));
-    setNotice(hasMissing ? "Saved positions restored. New nodes still need saving." : "Saved positions restored");
-    latest.current.onRestored();
+  function discard(): Promise<boolean> {
+    if (blocked || lockedRef.current || saved === null) {
+      return Promise.resolve(false);
+    }
+
+    const savedPositions = saved;
+    const currentLayoutId = active?.id ?? null;
+
+    return operate("managing", async () => {
+      await clearLocalRecovery(currentLayoutId);
+
+      if (!alive.current) return;
+
+      const fallback = latest.current.fallback();
+
+      latest.current.setNodes((nodes) =>
+        restoreLayoutPositions(
+          nodes,
+          savedPositions,
+          fallback,
+        ),
+      );
+
+      const ids = new Set(
+        savedPositions.map((position) => position.node_id),
+      );
+
+      const hasMissing = latest.current.nodes.some(
+        (node) => !ids.has(node.data.originalId),
+      );
+
+      setNotice(
+        hasMissing
+          ? "Saved positions restored. New nodes still need saving."
+          : "Saved positions restored",
+      );
+
+      latest.current.onRestored();
+    });
   }
 
+
+  function restoreRecovery(): void {
+  if (
+    phase !== "recovery" ||
+    !recoveryOffer ||
+    !options.recoveryScope
+  ) {
+    return;
+  }
+
+  const fallback = latest.current.fallback();
+
+  latest.current.setNodes((nodes) =>
+    restoreLayoutPositions(
+      nodes,
+      recoveryOffer.positions,
+      fallback,
+    ),
+  );
+
+  setRecoveryOffer(null);
+  setError("");
+  setNotice("Recovered unsaved positions. Use Save Layout to keep them.");
+  setPhase("ready");
+  setStartupReady(true);
+
+  latest.current.onRestored();
+}
+
+async function discardRecovery(): Promise<void> {
+  if (
+    phase !== "recovery" ||
+    !recoveryOffer ||
+    !options.recoveryScope ||
+    recoveryBusy
+  ) {
+    return;
+  }
+
+  setRecoveryBusy(true);
+  setError("");
+
+  try {
+    const controller = recoveryControllerRef.current;
+
+    if (!controller) {
+      throw new Error("Recovery controller unavailable");
+    }
+
+    await controller.clear(
+      options.recoveryScope,
+      recoveryOffer.layoutId,
+    );
+
+    if (!alive.current) return;
+
+    setRecoveryOffer(null);
+    setNotice("Local recovery discarded");
+    setPhase("ready");
+    setStartupReady(true);
+  } catch (cause) {
+    if (alive.current) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to discard local recovery",
+      );
+    }
+  } finally {
+    if (alive.current) {
+      setRecoveryBusy(false);
+    }
+  }
+}
+
   return {
-    active, layouts, dirty, phase, startupReady, error, notice, blocked,
+    active, layouts, dirty, phase, startupReady,
+    recoveryOffer,
+    recoveryBusy,
+    restoreRecovery,
+    discardRecovery,
+    error, notice, blocked,
     locked: phase !== "ready", isLocked, save, discard, saveAsNew, switchTo, rename, setDefault, deleteActive,
     canDelete, canDiscard: active !== null && dirty && !blocked,
     clearError: () => setError(""),

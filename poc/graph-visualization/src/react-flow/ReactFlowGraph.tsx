@@ -77,6 +77,7 @@ import {
 
 interface ReactFlowGraphProps {
   graph: GraphResponse;
+  recoveryScope: string | null;
   onGraphChanged: () => Promise<void>;
 }
 
@@ -220,6 +221,7 @@ const RECTANGLE_DRAG_THRESHOLD = 5;
 
 export function ReactFlowGraph({
   graph: graphData,
+  recoveryScope,
   onGraphChanged,
 }: ReactFlowGraphProps) {
   const instanceRef = useRef<ReactFlowInstance<
@@ -273,6 +275,7 @@ useEffect(() => {
   const layout = usePersistentLayout({
     nodes,
     diagnostics: diagnosticsRef.current,
+    recoveryScope,
     nodeIds: graphData.nodes.map((node) => node.id),
     setNodes,
     graphBusy: isCreatingNode || isUpdatingNode || isDeletingNode ||
@@ -2805,9 +2808,55 @@ return (
             justifyContent: "center",
           }}
         >
-          {layout.phase === "load-error"
-            ? "Graph layout could not be loaded. Use Retry loading layout."
-            : "Loading graph and layout…"}
+        {layout.phase === "recovery" && layout.recoveryOffer ? (
+          <div style={{ textAlign: "center", padding: 24 }}>
+            <h3>Unsaved layout recovery found</h3>
+
+            <p>
+              My Way found locally saved node positions from a
+              previous session.
+            </p>
+
+            <p>
+              Restore them, or discard the recovery and continue
+              with the server layout.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                justifyContent: "center",
+              }}
+            >
+              <button
+                type="button"
+                disabled={layout.recoveryBusy}
+                onClick={layout.restoreRecovery}
+              >
+                Restore
+              </button>
+
+              <button
+                type="button"
+                disabled={layout.recoveryBusy}
+                onClick={() => void layout.discardRecovery()}
+              >
+                {layout.recoveryBusy ? "Discarding…" : "Discard"}
+              </button>
+            </div>
+
+            {layout.error && (
+              <p className="error" role="alert">
+                {layout.error}
+              </p>
+            )}
+          </div>
+        ) : layout.phase === "load-error" ? (
+          "Graph layout could not be loaded. Use Retry loading layout."
+        ) : (
+          "Loading graph and layout…"
+        )}
         </div>
       ) : (
 
