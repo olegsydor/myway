@@ -713,3 +713,6 @@ body {
 .layout-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .react-flow-persistent-layout p { margin: 0; overflow-wrap: anywhere; }
 .react-flow-persistent-layout select { min-width: 0; max-width: 100%; }
+
+.graph-delete-dialog .graph-delete-confirm { background: #b42318; border-color: #b42318; color: #fff; }
+.graph-delete-dialog .graph-delete-confirm:disabled { opacity: 0.6; }

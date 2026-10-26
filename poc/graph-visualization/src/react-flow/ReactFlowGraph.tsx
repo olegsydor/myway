@@ -1,6 +1,10 @@
+import { GraphDeleteDialog } from "./GraphDeleteDialog";
+import { createGraphDeletionController, ordinaryDeleteIdentity, EMPTY_DELETE_STATE, type DeleteState } from "./graphDeletion";
+import { useGraphShortcuts } from "./useGraphShortcuts";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   Profiler,
@@ -331,6 +335,8 @@ useEffect(() => {
   }
 
 
+  const ordinaryTarget = useRef<string | null>(null);
+  const [deleteState, setDeleteState] = useState<DeleteState>(EMPTY_DELETE_STATE);
   const [selectedElement, setSelectedElement] = useState("None");
   const [selectedNodeForEdit, setSelectedNodeForEdit] =
     useState<ReactFlowNode | null>(null);
@@ -521,11 +527,13 @@ useEffect(() => {
     }
   }
 
+  const groupKeyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     const memberIds =
       activeBranch?.nodeIds ?? activeManualGroup?.nodeIds;
 
     if (!memberIds) {
+      groupKeyHandler.current = () => {};
       return;
     }
 
@@ -628,15 +636,21 @@ useEffect(() => {
       );
     };
 
-    window.addEventListener("keydown", handleBranchKeyDown, true);
+    groupKeyHandler.current = handleBranchKeyDown;
 
     return () => {
-      window.removeEventListener("keydown", handleBranchKeyDown, true);
+      groupKeyHandler.current = () => {};
     };
   }, [activeBranch, activeManualGroup, nodes, setNodes, layout.isLocked]);
 
 const handleNodesChange = useCallback(
   (changes: NodeChange<ReactFlowNode>[]) => {
+    for (const change of changes) {
+      if (change.type === "select") {
+        if (change.selected) ordinaryTarget.current = change.id;
+        else if (ordinaryTarget.current === change.id) ordinaryTarget.current = null;
+      }
+    }
     const startedAt = performance.now();
     const diagnostics = diagnosticsRef.current;
 
@@ -882,6 +896,7 @@ const handleNodesChange = useCallback(
   ].sort();
 
   const resetHighlighting = useCallback(() => {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
     setNodes((currentNodes) =>
       currentNodes.map((node) => ({
@@ -946,6 +961,7 @@ const handleNodesChange = useCallback(
   }
 
   function restoreAllElements() {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
     setSelectedNodeType("all");
     setSelectedEdgeType("all");
@@ -1074,6 +1090,7 @@ const handleNodesChange = useCallback(
         }),
       );
       setSelectedEdgeForEdit(null);
+      ordinaryTarget.current = selectedNode.id;
       setSelectedNodeForEdit(selectedNode);
 
       const selectedGraphNode = graphData.nodes.find(
@@ -1106,6 +1123,7 @@ const handleNodesChange = useCallback(
       setBranchSelection(null);
 
       setSelectedNodeForEdit(null);
+      ordinaryTarget.current = selectedEdge.id;
       setSelectedEdgeForEdit(selectedEdge);
       const selectedGraphEdge = graphData.edges.find(
         (edge) => `e-${edge.id}` === selectedEdge.id,
@@ -1181,7 +1199,59 @@ const handleNodesChange = useCallback(
     [graphData.edges, availableEdgeTypes, setEdges, setNodes],
   );
 
+  const deleteContext = useRef({ graphData, layout, onGraphChanged });
+  useLayoutEffect(() => { deleteContext.current = { graphData, layout, onGraphChanged }; });
+  const [deletion] = useState(() => createGraphDeletionController({
+    graph: () => deleteContext.current.graphData,
+    available: () => !deleteContext.current.layout.blocked && !deleteContext.current.layout.isLocked(),
+    remove: target => target.kind === "node" ? deleteNode(target.id) : deleteEdge(target.id),
+    refresh: () => deleteContext.current.onGraphChanged(),
+    onBusy: (busy, target) => target.kind === "node" ? setIsDeletingNode(busy) : setIsDeletingEdge(busy),
+    onState: setDeleteState,
+    onMessage: setActionMessage,
+    onDeleted: target => {
+      ordinaryTarget.current = null;
+      setSelectedNodeForEdit(null);
+      setSelectedEdgeForEdit(null);
+      setSelectedElement("None");
+      const id = `${target.kind === "node" ? "n" : "e"}-${target.id}`;
+      if (target.kind === "node") setNodes(nodes => nodes.map(node => node.id === id ? { ...node, selected: false } : node));
+      else setEdges(edges => edges.map(edge => edge.id === id ? { ...edge, selected: false } : edge));
+    },
+  }));
+
+  const formSections = {
+    createNode: useRef<HTMLDivElement>(null), createEdge: useRef<HTMLDivElement>(null),
+  };
+  const [keyboardForm, setKeyboardForm] = useState(false);
+  function focusForm(key: keyof typeof formSections) {
+    setKeyboardForm(true);
+    requestAnimationFrame(() => {
+      const section = formSections[key].current;
+      section?.scrollIntoView({ block: "nearest" });
+      section?.querySelector<HTMLElement>("input:not(:disabled), select:not(:disabled), textarea:not(:disabled)")?.focus();
+    });
+  }
+  useGraphShortcuts({
+    busy: layout.blocked || layout.isLocked(),
+    form: keyboardForm || Boolean(document.activeElement?.closest(
+      ".react-flow-edit-panel, [data-graph-create]")),
+    notice: () => setActionMessage("Finish or cancel the current operation first."),
+    fallback: event => groupKeyHandler.current(event),
+    run: action => {
+      if (action === "saveLayout") {
+        if (layout.dirty) void layout.save();
+      } else if (action === "createNode" || action === "createEdge") {
+        focusForm(action);
+      } else if (action === "deleteElement") {
+        const target = ordinaryDeleteIdentity(nodes, edges, Boolean(activeManualGroup || activeBranch), ordinaryTarget.current);
+        if (target) deletion.open(target);
+      }
+    },
+  });
+
   function handleSearchResult(result: GraphSearchResult) {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
 
     const selectedNodeIds =
@@ -1282,6 +1352,7 @@ const handleNodesChange = useCallback(
   }
 
   function applyTypeFilters(nodeType: string, edgeType: string) {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
 
     const visibleNodeIds = new Set(
@@ -1417,36 +1488,12 @@ const handleNodesChange = useCallback(
     }
   }
 
-  async function handleDeleteEdge() {
-    if (layout.isLocked()) return;
-    if (!selectedEdgeForEdit?.data) {
-      return;
-    }
-
-    const edgeId = selectedEdgeForEdit.data.originalId;
-
-    setIsDeletingEdge(true);
-
-    try {
-      await deleteEdge(edgeId);
-
-      await onGraphChanged();
-
-      setSelectedEdgeForEdit(null);
-      setSelectedElement("None");
-      setActionMessage("Edge deleted");
-    } catch (deleteError) {
-      setActionMessage(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Failed to delete Edge",
-      );
-    } finally {
-      setIsDeletingEdge(false);
-    }
+  function handleDeleteEdge() {
+    if (selectedEdgeForEdit?.data) deletion.open({ kind: "edge", id: selectedEdgeForEdit.data.originalId });
   }
 
   function handleShowFreeNodes() {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
 
     const freeNodeIds = new Set(
@@ -1516,6 +1563,7 @@ const handleNodesChange = useCallback(
   }
 
   function handleHighlightPathsToStart() {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
 
     if (!selectedNodeForEdit) {
@@ -1631,6 +1679,7 @@ const handleNodesChange = useCallback(
   }
 
   function handleHighlightPath() {
+    ordinaryTarget.current = null;
     setBranchSelection(null);
 
     const startValue = pathStart.trim();
@@ -1869,6 +1918,7 @@ const handleNodesChange = useCallback(
       reconcileGroup(currentGroup, existingNodeIds),
     );
 
+    ordinaryTarget.current = null;
     setEdges(elements.edges);
     setSelectedElement("None");
     setSelectedNodeForEdit(null);
@@ -2046,37 +2096,14 @@ const handleNodesChange = useCallback(
     }
   }
 
-  async function handleDeleteNode() {
-    if (layout.isLocked()) return;
-    if (!selectedNodeForEdit) {
-      return;
-    }
-
-    const nodeId = selectedNodeForEdit.data.originalId;
-
-    setIsDeletingNode(true);
-
-    try {
-      await deleteNode(nodeId);
-
-      await onGraphChanged();
-
-      setSelectedNodeForEdit(null);
-      setSelectedElement("None");
-      setActionMessage("Node deleted");
-    } catch (deleteError) {
-      setActionMessage(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Failed to delete Node",
-      );
-    } finally {
-      setIsDeletingNode(false);
-    }
+  function handleDeleteNode() {
+    if (selectedNodeForEdit) deletion.open({ kind: "node", id: selectedNodeForEdit.data.originalId });
   }
 
 return (
   <section className="react-flow-panel">
+    <GraphDeleteDialog state={deleteState} onCancel={deletion.cancel}
+      onConfirm={() => void deletion.confirm()} onRetry={() => void deletion.retryRefresh()} />
     <aside className="react-flow-sidebar">
       <div className="react-flow-header">
         <strong>My Way tools</strong>
@@ -2093,7 +2120,7 @@ return (
             Export diagnostics
           </button>
         )}
-        <div>
+        <div data-graph-create ref={formSections.createNode}>
           <strong>Create Node</strong>
           <label>
             Type{" "}
@@ -2204,7 +2231,7 @@ return (
           </button>
         </div>
 
-        <div>
+        <div data-graph-create ref={formSections.createEdge}>
           <strong>Create Edge</strong>
 
           <NodeSearchSelect
@@ -2863,7 +2890,13 @@ return (
       <div
         className="react-flow-container"
         style={{ position: "relative" }}
-        onPointerDownCapture={handleRectanglePointerDown}
+        tabIndex={0}
+        onFocusCapture={() => setKeyboardForm(false)}
+        onPointerDownCapture={(event) => {
+          setKeyboardForm(false);
+          if (!(event.target instanceof Element) || !event.target.closest("button, input, select, a")) event.currentTarget.focus();
+          handleRectanglePointerDown(event);
+        }}
         onPointerMoveCapture={handleRectanglePointerMove}
         onPointerUpCapture={handleRectanglePointerUp}
         onPointerCancelCapture={handleRectanglePointerCancel}
@@ -2891,14 +2924,22 @@ return (
           }}
         >
         <ReactFlow<ReactFlowNode, ReactFlowEdge>
-          nodes={layout.locked ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes}
-          nodesDraggable={!layout.locked}
+          nodes={layout.locked || deleteState.target ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes}
+          nodesDraggable={!layout.locked && !deleteState.target}
           edges={previewEdges}
           nodeTypes={reactFlowNodeTypes}
           edgeTypes={reactFlowEdgeTypes}
           onNodesChange={handleNodesChange}
           autoPanOnNodeDrag
-          onEdgesChange={onEdgesChange}
+          onEdgesChange={(changes) => {
+            for (const change of changes) {
+              if (change.type === "select") {
+                if (change.selected) ordinaryTarget.current = change.id;
+                else if (ordinaryTarget.current === change.id) ordinaryTarget.current = null;
+              }
+            }
+            onEdgesChange(changes);
+          }}
           onNodeClick={handleNodeClick}
           onEdgeClick={handleEdgeClick}
           onPaneClick={resetHighlighting}
