@@ -19,24 +19,24 @@ test("list metadata and fetch detail use separate GET endpoints", async () => {
     assert.equal(calls[0].url, "/api/layouts");
     assert.equal(calls[0].options?.method, "GET");
   });
-  await mockedFetch(() => json({ ...metadata, positions }), async (calls) => {
-    assert.deepEqual(await fetchLayout(7), { ...metadata, positions });
+  await mockedFetch(() => json({ ...metadata, positions, annotations: [] }), async (calls) => {
+    assert.deepEqual(await fetchLayout(7), { ...metadata, positions, annotations: [] });
     assert.equal(calls[0].url, "/api/layouts/7");
   });
 });
 test("save-as-new sends the working snapshot with POST and receives the new identity", async () => {
-  await mockedFetch(() => json({ ...metadata, id: 8, positions }, 201), async (calls) => {
+  await mockedFetch(() => json({ ...metadata, id: 8, positions, annotations: [] }, 201), async (calls) => {
     assert.equal((await createLayout("Career", positions)).id, 8);
     assert.equal(calls[0].options?.method, "POST");
-    assert.deepEqual(JSON.parse(calls[0].options?.body as string), { name: "Career", positions });
+    assert.deepEqual(JSON.parse(calls[0].options?.body as string), { name: "Career", positions, annotations: [] });
   });
 });
 test("save replaces the specified layout snapshot with PUT", async () => {
-  await mockedFetch(() => json({ ...metadata, positions }), async (calls) => {
-    await saveLayout(7, positions);
-    assert.equal(calls[0].url, "/api/layouts/7/positions");
+  await mockedFetch(() => json({ ...metadata, positions, annotations: [] }), async (calls) => {
+    await saveLayout(7, positions, []);
+    assert.equal(calls[0].url, "/api/layouts/7/workspace");
     assert.equal(calls[0].options?.method, "PUT");
-    assert.deepEqual(JSON.parse(calls[0].options?.body as string), { positions });
+    assert.deepEqual(JSON.parse(calls[0].options?.body as string), { positions, annotations: [] });
   });
 });
 test("rename and default PATCH never send coordinates", async () => {
@@ -73,5 +73,39 @@ test("startup GET forwards the cancellation signal", async () => {
   await mockedFetch(() => json([metadata]), async (calls) => {
     await fetchLayouts(controller.signal);
     assert.equal(calls[0].options?.signal, controller.signal);
+  });
+});
+
+test("create and save send annotations as part of the same workspace snapshot", async () => {
+  const { rectangle, text } = await import("./annotationFixtures.ts");
+  const annotations = [rectangle, text];
+  await mockedFetch(() => json({ ...metadata, positions, annotations }), async (calls) => {
+    assert.deepEqual((await createLayout("Annotated", positions, annotations)).annotations, annotations);
+    assert.deepEqual((await saveLayout(7, positions, annotations)).annotations, annotations);
+    assert.deepEqual(JSON.parse(calls[0].options?.body as string), { name: "Annotated", positions, annotations });
+    assert.deepEqual(JSON.parse(calls[1].options?.body as string), { positions, annotations });
+    assert.equal(calls[1].url, "/api/layouts/7/workspace");
+  });
+});
+
+test("invalid outgoing annotations never send a partial workspace", async () => {
+  const { rectangle } = await import("./annotationFixtures.ts");
+  await mockedFetch(() => json({ ...metadata, positions, annotations: [] }), async (calls) => {
+    await assert.rejects(saveLayout(7, positions, [{ ...rectangle, x: Infinity }]), /Invalid/);
+    await assert.rejects(createLayout("Bad", positions, [rectangle, rectangle]), /Duplicate/);
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("malformed server annotations reject the entire layout load", async () => {
+  const { rectangle } = await import("./annotationFixtures.ts");
+  await mockedFetch(() => json({ ...metadata, positions, annotations: [rectangle, rectangle] }), async () => {
+    await assert.rejects(fetchLayout(7), /Duplicate/);
+  });
+});
+
+test("an outdated server response reports incomplete data instead of a false annotation limit", async () => {
+  await mockedFetch(() => json({ ...metadata, positions }), async () => {
+    await assert.rejects(fetchLayout(7), /Layout data is incomplete/);
   });
 });

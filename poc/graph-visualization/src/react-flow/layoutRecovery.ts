@@ -1,10 +1,11 @@
+import { annotationFingerprint, annotationSnapshot, type Annotation } from "../shared/annotations.ts";
 import {
   positionSnapshot,
   type LayoutPosition,
   type PositionedNode,
 } from "../shared/persistentLayouts.ts";
 
-export interface LayoutRecoveryRecord {
+export interface LegacyLayoutRecoveryRecord {
   version: 1;
   scope: string;
   layoutId: number | null;
@@ -14,20 +15,31 @@ export interface LayoutRecoveryRecord {
   positions: LayoutPosition[];
 }
 
+export interface LayoutRecoveryRecord extends Omit<LegacyLayoutRecoveryRecord, "version"> {
+  version: 2;
+  baseAnnotationFingerprint: string;
+  annotationFingerprint: string;
+  annotations: Annotation[];
+}
+
 export type RecoveryCompatibility =
   | "compatible"
   | "invalid"
   | "wrong-scope"
   | "wrong-layout"
   | "changed-nodes"
-  | "changed-base";
+  | "changed-base"
+  | "changed-annotations";
 
 function validPositions(
-  positions: readonly LayoutPosition[],
-): boolean {
+  positions: unknown,
+): positions is LayoutPosition[] {
+  if (!Array.isArray(positions)) return false;
   const ids = new Set<number>();
 
-  for (const { node_id, x, y } of positions) {
+  for (const position of positions) {
+    if (typeof position !== "object" || position === null) return false;
+    const { node_id, x, y } = position;
     if (
       !Number.isSafeInteger(node_id) ||
       node_id <= 0 ||
@@ -89,6 +101,8 @@ export function createRecoveryRecord(
   nodes: readonly PositionedNode[],
   basePositions: readonly LayoutPosition[],
   savedAt = new Date().toISOString(),
+  annotations: readonly Annotation[] = [],
+  baseAnnotations: readonly Annotation[] = [],
 ): LayoutRecoveryRecord {
   if (!scope.trim()) {
     throw new Error("Recovery scope is required");
@@ -111,7 +125,10 @@ export function createRecoveryRecord(
   const positions = positionSnapshot(nodes);
 
   return {
-    version: 1,
+    version: 2,
+    annotations: annotationSnapshot(annotations),
+    annotationFingerprint: annotationFingerprint(annotations),
+    baseAnnotationFingerprint: annotationFingerprint(baseAnnotations),
     scope,
     layoutId,
     savedAt,
@@ -129,6 +146,7 @@ export function checkRecoveryCompatibility(
   layoutId: number | null,
   nodeIds: readonly number[],
   basePositions: readonly LayoutPosition[],
+  baseAnnotations: readonly Annotation[] = [],
 ): RecoveryCompatibility {
   if (
     typeof candidate !== "object" ||
@@ -137,22 +155,14 @@ export function checkRecoveryCompatibility(
     return "invalid";
   }
 
-  const record = candidate as Partial<LayoutRecoveryRecord>;
+  const record = candidate as Partial<Omit<LayoutRecoveryRecord, "version">> & { version?: number };
 
   if (
-    record.version !== 1 ||
+    (record.version !== 1 && record.version !== 2) ||
     typeof record.scope !== "string" ||
     typeof record.savedAt !== "string" ||
     !Number.isFinite(Date.parse(record.savedAt)) ||
     !Array.isArray(record.positions) ||
-    !record.positions.every(
-      (p): p is LayoutPosition =>
-        typeof p === "object" &&
-        p !== null &&
-        typeof p.node_id === "number" &&
-        typeof p.x === "number" &&
-        typeof p.y === "number",
-    ) ||
     !validPositions(record.positions) ||
     typeof record.baseFingerprint !== "string" ||
     typeof record.nodeFingerprint !== "string" ||
@@ -176,6 +186,18 @@ export function checkRecoveryCompatibility(
   }
 
   try {
+    const baseAnnotationsFingerprint = annotationFingerprint(baseAnnotations);
+    if (record.version === 1) {
+      // A v1 draft cannot prove a saved annotation baseline. Never drop v2 data.
+      if (record.annotations !== undefined || record.annotationFingerprint !== undefined ||
+          record.baseAnnotationFingerprint !== undefined) return "invalid";
+      if (baseAnnotations.length > 0) return "changed-annotations";
+    } else {
+      if (typeof record.annotationFingerprint !== "string" ||
+          typeof record.baseAnnotationFingerprint !== "string" ||
+          annotationFingerprint(record.annotations) !== record.annotationFingerprint) return "invalid";
+      if (record.baseAnnotationFingerprint !== baseAnnotationsFingerprint) return "changed-annotations";
+    }
     const expectedNodes = nodeFingerprint(nodeIds);
 
     if (
@@ -198,4 +220,16 @@ export function checkRecoveryCompatibility(
   }
 
   return "compatible";
+}
+
+/** Called only after compatibility validation; v1 upgrades are never written eagerly. */
+export function upgradeRecoveryRecord(record: LayoutRecoveryRecord | LegacyLayoutRecoveryRecord): LayoutRecoveryRecord {
+  return {
+    ...record,
+    version: 2,
+    positions: record.positions.map((position) => ({ ...position })),
+    annotations: record.version === 2 ? annotationSnapshot(record.annotations) : [],
+    annotationFingerprint: record.version === 2 ? record.annotationFingerprint : annotationFingerprint([]),
+    baseAnnotationFingerprint: record.version === 2 ? record.baseAnnotationFingerprint : annotationFingerprint([]),
+  };
 }

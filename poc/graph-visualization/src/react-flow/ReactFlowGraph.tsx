@@ -1,3 +1,4 @@
+import type { Annotation } from "../shared/annotations";
 import { GraphDeleteDialog } from "./GraphDeleteDialog";
 import { createGraphDeletionController, ordinaryDeleteIdentity, EMPTY_DELETE_STATE, type DeleteState } from "./graphDeletion";
 import { useGraphShortcuts } from "./useGraphShortcuts";
@@ -276,8 +277,11 @@ useEffect(() => {
   const [isUpdatingEdge, setIsUpdatingEdge] = useState(false);
   const [isDeletingEdge, setIsDeletingEdge] = useState(false);
   const [isRefreshingGraph, setIsRefreshingGraph] = useState(false);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const layout = usePersistentLayout({
     nodes,
+    annotations,
+    setAnnotations,
     diagnostics: diagnosticsRef.current,
     recoveryScope,
     nodeIds: graphData.nodes.map((node) => node.id),
@@ -2840,7 +2844,7 @@ return (
             <h3>Unsaved layout recovery found</h3>
 
             <p>
-              My Way found locally saved node positions from a
+              My Way found unsaved layout changes from a
               previous session.
             </p>
 

@@ -13,7 +13,10 @@ import type {
 
 function makeRecord(x = 10, layoutId = 7): LayoutRecoveryRecord {
   return {
-    version: 1,
+    version: 2,
+    annotations: [],
+    annotationFingerprint: "[]",
+    baseAnnotationFingerprint: "[]",
     scope: "test-scope",
     layoutId,
     savedAt: "2026-10-23T12:00:00.000Z",
@@ -384,4 +387,38 @@ test("clear invalidates a pending write in another controller", async () => {
 
   oldController.dispose();
   newController.dispose();
+});
+test("v2 debounce keeps the latest positions and annotations together", async () => {
+  const { rectangle, text } = await import("./annotationFixtures.ts");
+  const { createRecoveryRecord } = await import("../src/react-flow/layoutRecovery.ts");
+  const { storage } = memoryStorage();
+  const controller = new LayoutRecoveryController({ storage, debounceMs: 1000 });
+  const base = [{ node_id: 1, x: 0, y: 0 }];
+  const make = (x: number, annotations: typeof rectangle[] | typeof text[]) => createRecoveryRecord(
+    "v2-order", 7, [{ data: { originalId: 1 }, position: { x, y: 0 } }], base,
+    "2026-10-27T10:00:00.000Z", annotations, [],
+  );
+  controller.schedule(make(10, [rectangle]));
+  controller.schedule(make(20, [text]));
+  await controller.flush("v2-order", 7);
+  assert.deepEqual(await controller.read("v2-order", 7), make(20, [text]));
+  await controller.clear("v2-order", 7);
+  assert.equal(await controller.read("v2-order", 7), null);
+  controller.dispose();
+});
+
+test("cancelling a pending gesture snapshot retains stored recovery until a completed gesture", async () => {
+  const { storage } = memoryStorage();
+  const controller = new LayoutRecoveryController({ storage, debounceMs: 20 });
+  controller.schedule(makeRecord(10));
+  await controller.flush("test-scope", 7);
+  controller.schedule(makeRecord(20));
+  controller.cancelScheduled("test-scope", 7);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(await controller.read("test-scope", 7), makeRecord(10));
+  controller.schedule(makeRecord(30));
+  await controller.flush("test-scope", 7);
+  assert.deepEqual(await controller.read("test-scope", 7), makeRecord(30));
+  controller.dispose();
+  assert.doesNotThrow(() => controller.cancelScheduled("test-scope", 7));
 });

@@ -1,3 +1,4 @@
+import { annotationSnapshot, type Annotation } from "./annotations.ts";
 import type { LayoutDetail, LayoutPosition, SavedLayout } from "./persistentLayouts";
 
 async function request<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -21,16 +22,23 @@ export function fetchLayouts(signal?: AbortSignal): Promise<SavedLayout[]> {
   return request("", "GET", undefined, signal);
 }
 
-export function fetchLayout(id: number, signal?: AbortSignal): Promise<LayoutDetail> {
-  return request(`/${id}`, "GET", undefined, signal);
+function acceptedDetail(detail: LayoutDetail): LayoutDetail {
+  if (!Object.hasOwn(detail, "annotations")) {
+    throw new Error("Layout data is incomplete. Reload the application after its server update.");
+  }
+  return { ...detail, annotations: annotationSnapshot(detail.annotations) };
 }
 
-export function createLayout(name: string, positions: LayoutPosition[]): Promise<LayoutDetail> {
-  return request("", "POST", { name, positions });
+export async function fetchLayout(id: number, signal?: AbortSignal): Promise<LayoutDetail> {
+  return acceptedDetail(await request<LayoutDetail>(`/${id}`, "GET", undefined, signal));
 }
 
-export function saveLayout(id: number, positions: LayoutPosition[]): Promise<LayoutDetail> {
-  return request(`/${id}/positions`, "PUT", { positions });
+export async function createLayout(name: string, positions: LayoutPosition[], annotations: readonly Annotation[] = []): Promise<LayoutDetail> {
+  return acceptedDetail(await request<LayoutDetail>("", "POST", { name, positions, annotations: annotationSnapshot(annotations) }));
+}
+
+export async function saveLayout(id: number, positions: LayoutPosition[], annotations: readonly Annotation[]): Promise<LayoutDetail> {
+  return acceptedDetail(await request<LayoutDetail>(`/${id}/workspace`, "PUT", { positions, annotations: annotationSnapshot(annotations) }));
 }
 
 export function updateLayout(id: number, data: { name?: string; is_default?: true }): Promise<SavedLayout> {

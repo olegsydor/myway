@@ -1,6 +1,9 @@
+import type { Annotation } from "../shared/annotations";
 
 import {
   checkRecoveryCompatibility,
+  upgradeRecoveryRecord,
+  type LegacyLayoutRecoveryRecord,
   type LayoutRecoveryRecord,
 } from "./layoutRecovery.ts";
 
@@ -18,6 +21,7 @@ export async function checkStartupRecovery(
   layoutId: number | null,
   nodeIds: readonly number[],
   basePositions: readonly LayoutPosition[],
+  baseAnnotations: readonly Annotation[] = [],
 ): Promise<StartupRecoveryResult> {
   let candidate: unknown;
 
@@ -37,6 +41,7 @@ export async function checkStartupRecovery(
     layoutId,
     nodeIds,
     basePositions,
+    baseAnnotations,
   );
 
   if (compatibility !== "compatible") {
@@ -48,6 +53,6 @@ export async function checkStartupRecovery(
 
   return {
     status: "available",
-    record: candidate as LayoutRecoveryRecord,
+    record: upgradeRecoveryRecord(candidate as LayoutRecoveryRecord | LegacyLayoutRecoveryRecord),
   };
 }

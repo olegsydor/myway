@@ -157,6 +157,12 @@ export class LayoutRecoveryController {
     this.pending.set(key, { record, timer });
   }
 
+  /** Cancel a pending debounce during a gesture/unsafe operation, retaining stored drafts. */
+  cancelScheduled(scope: string, layoutId: number | null): void {
+    if (this.disposed) return;
+    this.cancelPending(this.key(scope, layoutId));
+  }
+
   flush(
     scope: string,
     layoutId: number | null,

@@ -1,24 +1,29 @@
+import { annotationSnapshot, type Annotation } from "../shared/annotations.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { createLayout, deleteLayout, fetchLayout, fetchLayouts, saveLayout, updateLayout } from "../shared/layoutApi";
+import { createLayout, deleteLayout, fetchLayout, fetchLayouts, saveLayout, updateLayout } from "../shared/layoutApi.ts";
 import {
-  graphNodesReady, layoutIsDirty, positionSnapshot, restoreLayoutPositions,
-  type LayoutDetail, type LayoutPosition, type SavedLayout,
-} from "../shared/persistentLayouts";
+  graphNodesReady, workspaceIsDirty, workspaceSnapshot, restoreWorkspace, restoreLayoutPositions,
+  type LayoutDetail, type WorkspaceSnapshot, type SavedLayout,
+} from "../shared/persistentLayouts.ts";
 import type { ReactFlowNode } from "./adapter";
 import type { LayoutDiagnostics } from "./layoutDiagnostics";
 import {
   checkStartupRecovery,
-} from "./layoutRecoveryStartup";
+} from "./layoutRecoveryStartup.ts";
 
 
 import type {
   LayoutRecoveryRecord,
-} from "./layoutRecovery";
-import { LayoutRecoveryController } from "./layoutRecoveryController";
-import { createRecoveryRecord } from "./layoutRecovery";
+} from "./layoutRecovery.ts";
+import { LayoutRecoveryController } from "./layoutRecoveryController.ts";
+import { createRecoveryRecord } from "./layoutRecovery.ts";
 
 interface Options {
   nodes: ReactFlowNode[];
+  annotations: Annotation[];
+  setAnnotations: Dispatch<SetStateAction<Annotation[]>>;
+  // Drawing, moving, resizing and uncommitted text editing block persistence.
+  annotationBusy?: boolean;
   nodeIds: number[];
   recoveryScope: string | null;
   setNodes: Dispatch<SetStateAction<ReactFlowNode[]>>;
@@ -43,7 +48,7 @@ export function usePersistentLayout(options: Options) {
   const [startupReady, setStartupReady] = useState(false);
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [active, setActive] = useState<SavedLayout | null>(null);
-  const [saved, setSaved] = useState<LayoutPosition[] | null>(null);
+  const [saved, setSaved] = useState<WorkspaceSnapshot | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -87,7 +92,7 @@ export function usePersistentLayout(options: Options) {
   const dirty = useMemo(() => {
   const startedAt = performance.now();
 
-  const result = layoutIsDirty(options.nodes, saved);
+  const result = workspaceIsDirty(options.nodes, options.annotations, saved);
 
   options.diagnostics?.record({
     kind: "dirty-check",
@@ -98,8 +103,8 @@ export function usePersistentLayout(options: Options) {
   });
 
   return result;
-}, [options.nodes, saved, options.diagnostics]);
-  const blocked = phase !== "ready" || options.graphBusy || dragging || !ready;
+}, [options.nodes, options.annotations, saved, options.diagnostics]);
+  const blocked = phase !== "ready" || options.graphBusy || dragging || Boolean(options.annotationBusy) || !ready;
     useEffect(() => {
     const diagnostics = options.diagnostics;
 
@@ -114,6 +119,8 @@ export function usePersistentLayout(options: Options) {
     if (options.graphBusy) {
       reasons.push("graph-busy");
     }
+
+    if (options.annotationBusy) reasons.push("annotation-busy");
 
     if (dragging) {
       reasons.push("dragging");
@@ -140,6 +147,7 @@ export function usePersistentLayout(options: Options) {
   }, [
     phase,
     options.graphBusy,
+    options.annotationBusy,
     dragging,
     ready,
     options.diagnostics,
@@ -196,6 +204,7 @@ useEffect(() => {
         layoutId,
         latest.current.nodeIds,
         startup.layout.positions,
+        startup.layout.annotations,
       );
 
       if (result.status === "available") {
@@ -211,6 +220,11 @@ useEffect(() => {
             : result.reason,
         );
       }
+      if (result.status === "incompatible" && !cancelled) {
+        // Malformed/obsolete drafts must never block loading the server workspace.
+        try { await recoveryControllerRef.current?.clear(scope, layoutId); }
+        catch (cause) { console.warn("Could not remove incompatible recovery:", cause); }
+      }
     }
 
     if (cancelled) return;
@@ -223,10 +237,12 @@ useEffect(() => {
         restoreLayoutPositions(nodes, positions, fallback),
       );
 
+      latest.current.setAnnotations(annotationSnapshot(startup.layout.annotations));
       setActive(startup.layout);
-      setSaved(positions);
+      setSaved({ positions, annotations: annotationSnapshot(startup.layout.annotations) });
       latest.current.onRestored();
     } else {
+      latest.current.setAnnotations([]);
       setActive(null);
       setSaved(null);
     }
@@ -263,18 +279,6 @@ useEffect(() => {
     const scope = options.recoveryScope;
     const controller = recoveryControllerRef.current;
 
-    console.log("[Recovery] state", {
-      hasController: Boolean(controller),
-      scope,
-      activeLayoutId: active?.id ?? null,
-      hasSaved: saved !== null,
-      startupReady,
-      phase,
-      ready,
-      dirty,
-      dragging,
-      graphBusy: options.graphBusy,
-    });
     if (
       !controller ||
       !scope ||
@@ -283,10 +287,17 @@ useEffect(() => {
       !startupReady ||
       phase !== "ready" ||
       !ready ||
-      !dirty ||
       dragging ||
+      options.annotationBusy ||
       options.graphBusy
     ) {
+      return;
+    }
+
+    if (!dirty) {
+      void controller.clear(scope, active.id).catch((cause) => {
+        console.warn("Could not clear clean workspace recovery:", cause);
+      });
       return;
     }
 
@@ -295,7 +306,10 @@ useEffect(() => {
         scope,
         active.id,
         options.nodes,
-        saved,
+        saved.positions,
+        new Date().toISOString(),
+        options.annotations,
+        saved.annotations,
       );
 
       const generation = controller.getGeneration(
@@ -304,12 +318,7 @@ useEffect(() => {
       );
 
       controller.schedule(record, generation);
-      console.log("[Recovery] scheduled", {
-        scope,
-        layoutId: active.id,
-        positions: record.positions.length,
-        generation,
-      });
+      return () => controller.cancelScheduled(scope, active.id);
     } catch (cause) {
       console.warn(
         "Failed to prepare layout recovery snapshot:",
@@ -319,6 +328,8 @@ useEffect(() => {
   }, [
     options.recoveryScope,
     options.nodes,
+    options.annotations,
+    options.annotationBusy,
     options.graphBusy,
     active,
     saved,
@@ -340,12 +351,14 @@ useEffect(() => {
   function acceptSnapshot(accepted: LayoutDetail) {
     remember(accepted);
     setActive(accepted);
-    setSaved(accepted.positions);
+    setSaved({ positions: accepted.positions, annotations: annotationSnapshot(accepted.annotations) });
+    latest.current.setAnnotations(annotationSnapshot(accepted.annotations));
   }
 
   function applyLayout(accepted: LayoutDetail) {
     const fallback = latest.current.fallback();
-    latest.current.setNodes((nodes) => restoreLayoutPositions(nodes, accepted.positions, fallback));
+    const restored = restoreWorkspace(latest.current.nodes, accepted, fallback);
+    latest.current.setNodes(restored.nodes);
     acceptSnapshot(accepted);
     latest.current.onSwitched();
     latest.current.onRestored();
@@ -353,7 +366,7 @@ useEffect(() => {
 
   async function operate(nextPhase: Phase, action: () => Promise<void>): Promise<boolean> {
     const current = latest.current;
-    if (lockedRef.current || current.graphBusy || current.nodes.some((node) => node.dragging) ||
+    if (lockedRef.current || current.graphBusy || current.annotationBusy || current.nodes.some((node) => node.dragging) ||
         !graphNodesReady(current.nodes, current.nodeIds)) return false;
     // A synchronous lock covers the gap before React renders the busy state.
     inFlight.current = true;
@@ -375,6 +388,7 @@ useEffect(() => {
 
   async function clearLocalRecovery(
     layoutId: number | null,
+    requireSuccess = false,
   ): Promise<void> {
     const controller = recoveryControllerRef.current;
     const scope = latest.current.recoveryScope;
@@ -384,6 +398,7 @@ useEffect(() => {
     try {
       await controller.clear(scope, layoutId);
     } catch (cause) {
+      if (requireSuccess) throw cause;
       console.warn(
         "Failed to clear local layout recovery:",
         cause,
@@ -393,12 +408,12 @@ useEffect(() => {
 
   async function persistCurrent() {
     const current = latest.current;
-    const positions = positionSnapshot(current.nodes);
+    const { positions, annotations } = workspaceSnapshot(current.nodes, current.annotations);
     const previousLayoutId = active?.id ?? null;
 
     const accepted = active
-      ? await saveLayout(active.id, positions)
-      : await createLayout("Main", positions);
+      ? await saveLayout(active.id, positions, annotations)
+      : await createLayout("Main", positions, annotations);
 
     // Server save succeeded. Invalidate the old local recovery.
     await clearLocalRecovery(previousLayoutId);
@@ -417,10 +432,8 @@ useEffect(() => {
     return operate("saving", async () => {
       const previousLayoutId = active?.id ?? null;
 
-      const accepted = await createLayout(
-        name.trim(),
-        positionSnapshot(latest.current.nodes),
-      );
+      const workspace = workspaceSnapshot(latest.current.nodes, latest.current.annotations);
+      const accepted = await createLayout(name.trim(), workspace.positions, workspace.annotations);
 
       await clearLocalRecovery(previousLayoutId);
 
@@ -455,7 +468,7 @@ useEffect(() => {
       if (!alive.current) return;
 
       if (choice === "discard") {
-        await clearLocalRecovery(previousLayoutId);
+        await clearLocalRecovery(previousLayoutId, true);
       }
 
       if (alive.current) {
@@ -517,23 +530,20 @@ useEffect(() => {
       return Promise.resolve(false);
     }
 
-    const savedPositions = saved;
+    const savedWorkspace = saved;
+    const savedPositions = saved.positions;
     const currentLayoutId = active?.id ?? null;
 
     return operate("managing", async () => {
-      await clearLocalRecovery(currentLayoutId);
+      await clearLocalRecovery(currentLayoutId, true);
 
       if (!alive.current) return;
 
       const fallback = latest.current.fallback();
 
-      latest.current.setNodes((nodes) =>
-        restoreLayoutPositions(
-          nodes,
-          savedPositions,
-          fallback,
-        ),
-      );
+      const restored = restoreWorkspace(latest.current.nodes, savedWorkspace, fallback);
+      latest.current.setNodes(restored.nodes);
+      latest.current.setAnnotations(restored.annotations);
 
       const ids = new Set(
         savedPositions.map((position) => position.node_id),
@@ -545,8 +555,8 @@ useEffect(() => {
 
       setNotice(
         hasMissing
-          ? "Saved positions restored. New nodes still need saving."
-          : "Saved positions restored",
+          ? "Saved workspace restored. New nodes still need saving."
+          : "Saved workspace restored",
       );
 
       latest.current.onRestored();
@@ -558,7 +568,8 @@ useEffect(() => {
   if (
     phase !== "recovery" ||
     !recoveryOffer ||
-    !options.recoveryScope
+    !options.recoveryScope ||
+    recoveryBusy
   ) {
     return;
   }
@@ -573,9 +584,10 @@ useEffect(() => {
     ),
   );
 
+  latest.current.setAnnotations(annotationSnapshot(recoveryOffer.annotations));
   setRecoveryOffer(null);
   setError("");
-  setNotice("Recovered unsaved positions. Use Save Layout to keep them.");
+  setNotice("Recovered unsaved layout changes. Use Save Layout to keep them.");
   setPhase("ready");
   setStartupReady(true);
 

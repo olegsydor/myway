@@ -31,7 +31,7 @@ function record() {
 test("creates a recovery record", () => {
   const recovery = record();
 
-  assert.equal(recovery.version, 1);
+  assert.equal(recovery.version, 2);
   assert.equal(recovery.layoutId, 7);
   assert.equal(recovery.positions.length, 2);
 
@@ -142,7 +142,7 @@ test("rejects duplicate node IDs", () => {
 test("rejects unsupported recovery versions", () => {
   assert.equal(
     checkRecoveryCompatibility(
-      { ...record(), version: 2 },
+      { ...record(), version: 3 },
       "test-user:test-graph",
       7,
       [1, 2],

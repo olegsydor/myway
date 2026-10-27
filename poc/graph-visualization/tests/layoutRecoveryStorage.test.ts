@@ -19,7 +19,10 @@ function makeRecord(
   layoutId: number | null = 7,
 ): LayoutRecoveryRecord {
   return {
-    version: 1,
+    version: 2,
+    annotations: [],
+    annotationFingerprint: "[]",
+    baseAnnotationFingerprint: "[]",
     scope,
     layoutId,
     savedAt: "2026-10-23T12:00:00.000Z",

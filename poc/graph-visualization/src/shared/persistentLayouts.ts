@@ -1,3 +1,5 @@
+import { annotationSnapshot, annotationsEqual, type Annotation } from "./annotations.ts";
+
 export interface LayoutPosition {
   node_id: number;
   x: number;
@@ -14,6 +16,7 @@ export interface SavedLayout {
 
 export interface LayoutDetail extends SavedLayout {
   positions: LayoutPosition[];
+  annotations: Annotation[];
 }
 
 export interface PositionedNode {
@@ -60,4 +63,27 @@ export function restoreLayoutPositions<T extends PositionedNode>(
     position: { ...(savedById.get(node.data.originalId) ??
       fallbackById.get(node.data.originalId) ?? node.position) },
   }));
+}
+
+export interface WorkspaceSnapshot {
+  positions: LayoutPosition[];
+  annotations: Annotation[];
+}
+
+export function workspaceSnapshot(nodes: readonly PositionedNode[], annotations: unknown): WorkspaceSnapshot {
+  return { positions: positionSnapshot(nodes), annotations: annotationSnapshot(annotations) };
+}
+
+export function workspaceIsDirty(
+  nodes: readonly PositionedNode[], annotations: readonly Annotation[],
+  saved: WorkspaceSnapshot | null,
+): boolean {
+  return saved === null || layoutIsDirty(nodes, saved.positions) || !annotationsEqual(annotations, saved.annotations);
+}
+
+export function restoreWorkspace<T extends PositionedNode>(
+  nodes: readonly T[], saved: WorkspaceSnapshot, fallback: readonly PositionedNode[],
+): { nodes: T[]; annotations: Annotation[] } {
+  const annotations = annotationSnapshot(saved.annotations);
+  return { nodes: restoreLayoutPositions(nodes, saved.positions, fallback), annotations };
 }
