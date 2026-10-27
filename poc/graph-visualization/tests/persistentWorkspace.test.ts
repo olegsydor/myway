@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement, useLayoutEffect, useState } from "react";
 import { create } from "react-test-renderer";
 import { IDBFactory } from "fake-indexeddb";
+import { useAnnotationWorkspace, type AnnotationWorkspace, type AnnotationPointer } from "../src/react-flow/useAnnotationWorkspace.ts";
 import { usePersistentLayout } from "../src/react-flow/usePersistentLayout.ts";
 import { readLayoutRecovery, writeLayoutRecovery } from "../src/react-flow/layoutRecoveryStorage.ts";
 import { createRecoveryRecord } from "../src/react-flow/layoutRecovery.ts";
@@ -24,6 +25,7 @@ let current: ReturnType<typeof usePersistentLayout> & {
   graphOperation: (busy: boolean) => void;
   move: (x: number) => void;
 };
+let interaction: AnnotationWorkspace;
 let root: ReturnType<typeof create>;
 let layouts: Map<number, { positions: { node_id: number; x: number; y: number }[]; annotations: Annotation[] } & ReturnType<typeof metadata>>;
 let calls: { method: string; path: string; body: any }[];
@@ -34,18 +36,24 @@ function Harness() {
   const [nodes, setNodes] = useState(initialNodes);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [annotationBusy, setAnnotationBusy] = useState(false);
+  const [gestureBusy, setGestureBusy] = useState(false);
   const [graphBusy, setGraphBusy] = useState(false);
   const layout = usePersistentLayout({
-    nodes, nodeIds: [1], annotations, setAnnotations, annotationBusy, graphBusy, setNodes,
+    nodes, nodeIds: [1], annotations, setAnnotations, annotationBusy: annotationBusy || gestureBusy, graphBusy, setNodes,
     recoveryScope: scope, fallback: () => initialNodes,
-    onRestored() {}, onSwitched() {},
+    onRestored() {}, onSwitched() { workspace.reset(); },
+  });
+  const workspace = useAnnotationWorkspace({
+    annotations, setAnnotations, locked: layout.locked || graphBusy,
+    toGraph: (point) => point, onBusy: setGestureBusy, onEnterAnnotation() {},
   });
   useLayoutEffect(() => {
+    interaction = workspace;
     current = { ...layout, nodes, annotations, editAnnotations: setAnnotations,
       annotationGesture: setAnnotationBusy, graphOperation: setGraphBusy,
       move: (x) => setNodes((previous) => previous.map((node) => ({ ...node, position: { x, y: 0 } }))),
     };
-  }, [layout, nodes, annotations]);
+  }, [layout, nodes, annotations, workspace]);
   return null;
 }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -334,4 +342,57 @@ test("duplicate Save submissions share the synchronous persistence guard", async
   assert.deepEqual(results, [true, false]);
   assert.equal(calls.filter(({ method }) => method === "PUT").length, 1);
   assert.deepEqual(state(), { annotations: [rectangle], x: 77, dirty: false, active: 1 });
+});
+
+function annotationPointer(x: number, y: number): AnnotationPointer {
+  return { pointerId: 1, button: 0, clientX: x, clientY: y,
+    currentTarget: { setPointerCapture() {}, hasPointerCapture: () => false, releasePointerCapture() {} },
+    preventDefault() {}, stopPropagation() {},
+  };
+}
+async function drawRectangle() {
+  await run(() => interaction.switchMode("annotation"));
+  await run(() => interaction.setActiveTool("rectangle"));
+  await run(() => interaction.begin(annotationPointer(0, 0)));
+  await run(() => interaction.end(annotationPointer(100, 100)));
+}
+
+test("Rectangle preview blocks Save without dirtying workspace; committed creation saves both parts", async () => {
+  await run(() => interaction.switchMode("annotation"));
+  await run(() => interaction.setActiveTool("rectangle"));
+  await run(() => interaction.begin(annotationPointer(0, 0)));
+  await run(() => interaction.move(annotationPointer(100, 100)));
+  assert.equal(current.dirty, false);
+  assert.equal(current.blocked, true);
+  assert.equal(await run(() => current.save()), false);
+  assert.equal(calls.some(({ method }) => method === "PUT"), false);
+  await run(() => interaction.end(annotationPointer(100, 100)));
+  const created = current.annotations[1];
+  assert.equal(created.kind, "rectangle");
+  assert.equal(current.dirty, true);
+  assert.equal(current.blocked, false);
+  assert.equal(await run(() => current.save()), true);
+  assert.deepEqual(layouts.get(1)?.annotations, [text, created]);
+  assert.equal(current.dirty, false);
+  assert.equal(interaction.mode, "annotation");
+});
+
+test("Discard restores workspace after Rectangle creation while preserving current mode", async () => {
+  await drawRectangle();
+  assert.equal(current.annotations.length, 2);
+  assert.equal(await run(() => current.discard()), true);
+  assert.deepEqual(state(), clean());
+  assert.equal(interaction.mode, "annotation");
+  assert.equal(interaction.selected, null);
+});
+
+test("switching a layout clears Rectangle tool and selection without leaving Annotation mode", async () => {
+  await drawRectangle();
+  assert.notEqual(interaction.selected, null);
+  await run(() => interaction.setActiveTool("rectangle"));
+  assert.equal(await run(() => current.switchTo(2, "discard")), true);
+  assert.equal(interaction.mode, "annotation");
+  assert.equal(interaction.tool, "select");
+  assert.equal(interaction.selectedId, null);
+  assert.deepEqual(current.annotations, [rectangle]);
 });

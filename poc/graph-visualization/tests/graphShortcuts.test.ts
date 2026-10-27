@@ -52,3 +52,19 @@ test('one registration is removed with the same callback and capture mode', () =
   cleanup();
   assert.deepEqual(calls[1], ['remove','keydown',listener,true]);
 });
+
+test('Annotation mode disables graph CRUD shortcuts but retains workspace Save and annotation Delete', () => {
+  for (const k of ['n', 'e']) assert.deepEqual(dispatch(k, {workspaceMode:'annotation'}), {prevented:false,actions:[]});
+  for (const k of ['Delete', 'Backspace']) {
+    assert.deepEqual(dispatch(k, {workspaceMode:'annotation'}), {prevented:true,actions:['deleteElement']});
+    for (const context of [{editable:true}, {modal:true}, {form:true}, {busy:true}, {canvas:false}]) {
+      assert.deepEqual(dispatch(k, {workspaceMode:'annotation', ...context}).actions, []);
+    }
+  }
+  assert.deepEqual(dispatch('s', {workspaceMode:'annotation'}, {metaKey:true}), {prevented:true,actions:['saveLayout']});
+  assert.deepEqual(dispatch('Escape'), {prevented:false,actions:[]});
+  assert.deepEqual(dispatch('Escape', {workspaceMode:'annotation', busy:true, annotationGesture:true}),
+    {prevented:true,actions:['cancelAnnotation']});
+  assert.deepEqual(dispatch('Escape', {workspaceMode:'annotation', busy:true, annotationGesture:false}).actions, []);
+  assert.deepEqual(dispatch('Escape', {workspaceMode:'annotation', annotationGesture:true, modal:true}).actions, []);
+});

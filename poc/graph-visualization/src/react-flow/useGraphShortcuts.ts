@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { dispatchShortcut, isEditableTarget, registerGraphKeyboard, type ShortcutContext } from "./graphShortcuts";
+import { dispatchShortcut, isEditableTarget, registerGraphKeyboard, type ShortcutContext } from "./graphShortcuts.ts";
 
 export function useGraphShortcuts(context: Omit<ShortcutContext, "canvas" | "editable" | "modal"> & {
   fallback: (event: KeyboardEvent) => void;
@@ -13,7 +13,7 @@ export function useGraphShortcuts(context: Omit<ShortcutContext, "canvas" | "edi
       const canvas = Boolean(target?.closest(".react-flow-container"));
       const editable = isEditableTarget(event.target);
       if (!dispatchShortcut(event, { ...latest.current, canvas, editable, modal }) &&
-          canvas && !editable && !modal && !latest.current.busy && !latest.current.form &&
+          latest.current.workspaceMode !== "annotation" && canvas && !editable && !modal && !latest.current.busy && !latest.current.form &&
           !event.repeat && !event.isComposing) latest.current.fallback(event);
     };
     return registerGraphKeyboard(window, listener);

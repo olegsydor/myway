@@ -1,5 +1,5 @@
 export const GRAPH_SHORTCUTS = {
-  saveLayout: "mod+s", createNode: "n", createEdge: "e", deleteElement: ["delete", "backspace"],
+  cancelAnnotation: "escape", saveLayout: "mod+s", createNode: "n", createEdge: "e", deleteElement: ["delete", "backspace"],
 } as const;
 export type ShortcutAction = keyof typeof GRAPH_SHORTCUTS;
 export type Key = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
@@ -23,6 +23,8 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 }
 export interface ShortcutContext {
   canvas: boolean; editable: boolean; modal: boolean; busy: boolean; form: boolean;
+  workspaceMode?: "graph" | "annotation";
+  annotationGesture?: boolean;
   run: (action: ShortcutAction) => void; notice: () => void;
 }
 export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext): boolean {
@@ -35,8 +37,11 @@ export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext)
     else if (!context.busy) context.run(action);
     return true;
   }
+  if (action === "cancelAnnotation" && context.workspaceMode !== "annotation") return false;
+  if (context.workspaceMode === "annotation" && (action === "createNode" || action === "createEdge")) return false;
+  const cancellingGesture = action === "cancelAnnotation" && context.annotationGesture;
   if (event.defaultPrevented || event.repeat || event.isComposing || !context.canvas ||
-      context.editable || context.modal || context.busy || context.form) return false;
+      context.editable || context.modal || (context.busy && !cancellingGesture) || context.form) return false;
   event.preventDefault();
   context.run(action);
   return true;

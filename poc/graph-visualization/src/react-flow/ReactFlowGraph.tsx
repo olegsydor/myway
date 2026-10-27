@@ -1,3 +1,7 @@
+import { AnnotationControls, AnnotationDeleteDialog } from "./AnnotationControls";
+import { AnnotationLayer } from "./AnnotationLayer";
+import { useAnnotationWorkspace } from "./useAnnotationWorkspace";
+import { clearNodeHighlights, clearEdgeHighlights, type ResizeHandle } from "./annotationInteraction";
 import type { Annotation } from "../shared/annotations";
 import { GraphDeleteDialog } from "./GraphDeleteDialog";
 import { createGraphDeletionController, ordinaryDeleteIdentity, EMPTY_DELETE_STATE, type DeleteState } from "./graphDeletion";
@@ -6,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   Profiler,
@@ -278,21 +283,25 @@ useEffect(() => {
   const [isDeletingEdge, setIsDeletingEdge] = useState(false);
   const [isRefreshingGraph, setIsRefreshingGraph] = useState(false);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [annotationBusy, setAnnotationBusy] = useState(false);
+  const graphBusy = isCreatingNode || isUpdatingNode || isDeletingNode ||
+    isCreatingEdge || isUpdatingEdge || isDeletingEdge || isRefreshingGraph;
   const layout = usePersistentLayout({
     nodes,
     annotations,
     setAnnotations,
+    annotationBusy,
     diagnostics: diagnosticsRef.current,
     recoveryScope,
     nodeIds: graphData.nodes.map((node) => node.id),
     setNodes,
-    graphBusy: isCreatingNode || isUpdatingNode || isDeletingNode ||
-      isCreatingEdge || isUpdatingEdge || isDeletingEdge || isRefreshingGraph,
+    graphBusy,
     fallback: () => {
       const elements = toReactFlowElements(graphData);
       return positionNodes(elements.nodes, elements.edges, "dagre");
     },
     onSwitched: () => {
+      annotationWorkspace.reset();
       setBranchSelection(null);
       setManualGroup(null);
     },
@@ -373,10 +382,27 @@ useEffect(() => {
   const [selectionRectangle, setSelectionRectangle] =
     useState<SelectionRectangle | null>(null);
 
+
+  const annotationLocked = layout.locked || !layout.startupReady || graphBusy ||
+    nodes.some((node) => node.dragging) || Boolean(deleteState.target);
+  const annotationWorkspace = useAnnotationWorkspace({
+    annotations, setAnnotations, locked: annotationLocked,
+    toGraph: (point) => instanceRef.current?.screenToFlowPosition(point, { snapToGrid: false }) ?? point,
+    onBusy: setAnnotationBusy,
+    onEnterAnnotation: () => {
+      resetHighlighting();
+      setManualGroup(null);
+      rectangleGestureRef.current = null;
+      setSelectionRectangle(null);
+    },
+  });
+  const annotationMode = annotationWorkspace.mode === "annotation";
+  const isLayoutLocked = layout.isLocked;
+
   function handleRectanglePointerDown(
     event: ReactPointerEvent<HTMLDivElement>,
   ) {
-    if (layout.isLocked() || event.button !== 0 || !event.shiftKey) {
+    if (annotationMode || layout.isLocked() || event.button !== 0 || !event.shiftKey) {
       return;
     }
 
@@ -536,7 +562,7 @@ useEffect(() => {
     const memberIds =
       activeBranch?.nodeIds ?? activeManualGroup?.nodeIds;
 
-    if (!memberIds) {
+    if (annotationMode || !memberIds) {
       groupKeyHandler.current = () => {};
       return;
     }
@@ -645,10 +671,11 @@ useEffect(() => {
     return () => {
       groupKeyHandler.current = () => {};
     };
-  }, [activeBranch, activeManualGroup, nodes, setNodes, layout.isLocked]);
+  }, [activeBranch, activeManualGroup, nodes, setNodes, layout.isLocked, annotationMode]);
 
 const handleNodesChange = useCallback(
   (changes: NodeChange<ReactFlowNode>[]) => {
+    if (annotationMode) changes = changes.filter((change) => change.type === "dimensions");
     for (const change of changes) {
       if (change.type === "select") {
         if (change.selected) ordinaryTarget.current = change.id;
@@ -754,7 +781,7 @@ const handleNodesChange = useCallback(
         }
       });
     },
-    [activeBranch, activeManualGroup, setNodes, layout.isLocked],
+    [activeBranch, activeManualGroup, setNodes, layout.isLocked, annotationMode],
   );
 
   const visibleBranchCount = activeBranch
@@ -803,6 +830,12 @@ const handleNodesChange = useCallback(
         })
       : nodes;
 
+  const interactionNodes = useMemo(() =>
+    annotationMode || layout.locked || deleteState.target
+      ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes,
+    [annotationMode, layout.locked, deleteState.target, previewNodes],
+  );
+
   const previewEdges = activeBranch
     ? edges.map((edge) => {
         const touchesBranch =
@@ -829,6 +862,7 @@ const handleNodesChange = useCallback(
       : edges;
 
   function handleSelectBranch() {
+    if (annotationMode) return;
     if (!selectedNodeForEdit || activeManualGroup) {
       return;
     }
@@ -902,37 +936,8 @@ const handleNodesChange = useCallback(
   const resetHighlighting = useCallback(() => {
     ordinaryTarget.current = null;
     setBranchSelection(null);
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => ({
-        ...node,
-        selected: false,
-        style: {
-          ...node.style,
-          opacity: 1,
-          border: "2px solid #ffffff",
-        },
-      })),
-    );
-
-    setEdges((currentEdges) =>
-      currentEdges.map((edge) => ({
-        ...edge,
-        selected: false,
-        style: {
-          ...edge.style,
-          opacity: 1,
-          stroke: "#94a3b8",
-          strokeWidth: 2,
-        },
-        markerEnd:
-          typeof edge.markerEnd === "object"
-            ? {
-                ...edge.markerEnd,
-                color: "#94a3b8",
-              }
-            : edge.markerEnd,
-      })),
-    );
+    setNodes(clearNodeHighlights);
+    setEdges(clearEdgeHighlights);
 
     setSelectedElement("None");
     setSelectedNodeForEdit(null);
@@ -1010,6 +1015,7 @@ const handleNodesChange = useCallback(
   const handleNodeClick: NodeMouseHandler<ReactFlowNode> = useCallback(
 
     (event, selectedNode) => {
+      if (annotationMode || isLayoutLocked()) return;
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
 
@@ -1119,11 +1125,12 @@ const handleNodesChange = useCallback(
 
       setSelectedElement(`Node: ${String(selectedNode.data.label)}`);
     },
-    [graphData, branchSelection, availableNodeTypes, setEdges, setNodes],
+    [graphData, branchSelection, availableNodeTypes, setEdges, setNodes, annotationMode, isLayoutLocked],
   );
 
   const handleEdgeClick: EdgeMouseHandler<ReactFlowEdge> = useCallback(
     (_event, selectedEdge) => {
+      if (annotationMode || isLayoutLocked()) return;
       setBranchSelection(null);
 
       setSelectedNodeForEdit(null);
@@ -1200,14 +1207,14 @@ const handleNodesChange = useCallback(
 
       setSelectedElement(`Edge: ${String(selectedEdge.label)}`);
     },
-    [graphData.edges, availableEdgeTypes, setEdges, setNodes],
+    [graphData.edges, availableEdgeTypes, setEdges, setNodes, annotationMode, isLayoutLocked],
   );
 
-  const deleteContext = useRef({ graphData, layout, onGraphChanged });
-  useLayoutEffect(() => { deleteContext.current = { graphData, layout, onGraphChanged }; });
+  const deleteContext = useRef({ graphData, layout, onGraphChanged, annotationMode });
+  useLayoutEffect(() => { deleteContext.current = { graphData, layout, onGraphChanged, annotationMode }; });
   const [deletion] = useState(() => createGraphDeletionController({
     graph: () => deleteContext.current.graphData,
-    available: () => !deleteContext.current.layout.blocked && !deleteContext.current.layout.isLocked(),
+    available: () => !deleteContext.current.annotationMode && !deleteContext.current.layout.blocked && !deleteContext.current.layout.isLocked(),
     remove: target => target.kind === "node" ? deleteNode(target.id) : deleteEdge(target.id),
     refresh: () => deleteContext.current.onGraphChanged(),
     onBusy: (busy, target) => target.kind === "node" ? setIsDeletingNode(busy) : setIsDeletingEdge(busy),
@@ -1237,6 +1244,8 @@ const handleNodesChange = useCallback(
     });
   }
   useGraphShortcuts({
+    workspaceMode: annotationWorkspace.mode,
+    annotationGesture: annotationWorkspace.gestureActive,
     busy: layout.blocked || layout.isLocked(),
     form: keyboardForm || Boolean(document.activeElement?.closest(
       ".react-flow-edit-panel, [data-graph-create]")),
@@ -1247,6 +1256,10 @@ const handleNodesChange = useCallback(
         if (layout.dirty) void layout.save();
       } else if (action === "createNode" || action === "createEdge") {
         focusForm(action);
+      } else if (action === "cancelAnnotation") {
+        annotationWorkspace.cancel();
+      } else if (action === "deleteElement" && annotationMode) {
+        annotationWorkspace.requestDelete();
       } else if (action === "deleteElement") {
         const target = ordinaryDeleteIdentity(nodes, edges, Boolean(activeManualGroup || activeBranch), ordinaryTarget.current);
         if (target) deletion.open(target);
@@ -1255,6 +1268,7 @@ const handleNodesChange = useCallback(
   });
 
   function handleSearchResult(result: GraphSearchResult) {
+    if (annotationMode) return;
     ordinaryTarget.current = null;
     setBranchSelection(null);
 
@@ -1435,7 +1449,7 @@ const handleNodesChange = useCallback(
   }
 
   async function handleUpdateEdge() {
-    if (layout.isLocked()) return;
+    if (annotationMode || layout.isLocked()) return;
     if (!selectedEdgeForEdit) {
       return;
     }
@@ -1493,10 +1507,12 @@ const handleNodesChange = useCallback(
   }
 
   function handleDeleteEdge() {
+    if (annotationMode) return;
     if (selectedEdgeForEdit?.data) deletion.open({ kind: "edge", id: selectedEdgeForEdit.data.originalId });
   }
 
   function handleShowFreeNodes() {
+    if (annotationMode) return;
     ordinaryTarget.current = null;
     setBranchSelection(null);
 
@@ -1567,6 +1583,7 @@ const handleNodesChange = useCallback(
   }
 
   function handleHighlightPathsToStart() {
+    if (annotationMode) return;
     ordinaryTarget.current = null;
     setBranchSelection(null);
 
@@ -1683,6 +1700,7 @@ const handleNodesChange = useCallback(
   }
 
   function handleHighlightPath() {
+    if (annotationMode) return;
     ordinaryTarget.current = null;
     setBranchSelection(null);
 
@@ -1784,7 +1802,7 @@ const handleNodesChange = useCallback(
 
   const runLayout = useCallback(
     (layoutName: LayoutName) => {
-      if (layout.isLocked() || layout.blocked) return;
+      if (annotationMode || layout.isLocked() || layout.blocked) return;
       if (layout.dirty && !window.confirm(
         "This will replace the current unsaved node arrangement. Continue?",
       )) return;
@@ -1812,7 +1830,7 @@ const handleNodesChange = useCallback(
         });
       });
     },
-    [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty],
+    [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty, annotationMode],
   );
 
   useEffect(() => {
@@ -1958,7 +1976,7 @@ const handleNodesChange = useCallback(
   }, [graphData, setEdges, setNodes]);
 
   async function handleCreateNode() {
-    if (layout.isLocked()) return;
+    if (annotationMode || layout.isLocked()) return;
     const name = newNodeName.trim();
     const nodeTypeId = Number(newNodeTypeId);
 
@@ -2002,7 +2020,7 @@ const handleNodesChange = useCallback(
   }
 
   async function handleCreateEdge() {
-    if (layout.isLocked()) return;
+    if (annotationMode || layout.isLocked()) return;
     const sourceNodeId = Number(newEdgeSourceId);
     const targetNodeId = Number(newEdgeTargetId);
     const edgeTypeId = Number(newEdgeTypeId);
@@ -2055,7 +2073,7 @@ const handleNodesChange = useCallback(
   }
 
   async function handleUpdateNode() {
-    if (layout.isLocked()) return;
+    if (annotationMode || layout.isLocked()) return;
     if (!selectedNodeForEdit) {
       return;
     }
@@ -2101,6 +2119,7 @@ const handleNodesChange = useCallback(
   }
 
   function handleDeleteNode() {
+    if (annotationMode) return;
     if (selectedNodeForEdit) deletion.open({ kind: "node", id: selectedNodeForEdit.data.originalId });
   }
 
@@ -2108,6 +2127,7 @@ return (
   <section className="react-flow-panel">
     <GraphDeleteDialog state={deleteState} onCancel={deletion.cancel}
       onConfirm={() => void deletion.confirm()} onRetry={() => void deletion.retryRefresh()} />
+    <AnnotationDeleteDialog workspace={annotationWorkspace} locked={annotationLocked} />
     <aside className="react-flow-sidebar">
       <div className="react-flow-header">
         <strong>My Way tools</strong>
@@ -2116,6 +2136,7 @@ return (
       <div className="react-flow-sidebar__content">
         <div className="react-flow-toolbar">
         <LayoutControls layout={layout} onRefreshGraph={refreshGraphForLayout} />
+        <AnnotationControls workspace={annotationWorkspace} locked={annotationLocked} />
         {diagnosticsRef.current && (
           <button
             type="button"
@@ -2124,6 +2145,7 @@ return (
             Export diagnostics
           </button>
         )}
+        <fieldset className="graph-crud-controls" disabled={annotationMode || annotationBusy}>
         <div data-graph-create ref={formSections.createNode}>
           <strong>Create Node</strong>
           <label>
@@ -2352,17 +2374,18 @@ return (
           </button>
         </div>
 
+        </fieldset>
         <div>
           <strong>Arrange nodes</strong>
-          <button type="button" disabled={layout.blocked} onClick={() => runLayout("grid")}>
+          <button type="button" disabled={annotationMode || layout.blocked} onClick={() => runLayout("grid")}>
             Grid
           </button>
 
-          <button type="button" disabled={layout.blocked} onClick={() => runLayout("circle")}>
+          <button type="button" disabled={annotationMode || layout.blocked} onClick={() => runLayout("circle")}>
             Circle
           </button>
 
-          <button type="button" disabled={layout.blocked} onClick={() => runLayout("dagre")}>
+          <button type="button" disabled={annotationMode || layout.blocked} onClick={() => runLayout("dagre")}>
             Dagre
           </button>
 
@@ -2378,17 +2401,16 @@ return (
             Fit
           </button>
 
-          <button type="button" onClick={resetHighlighting}>
+          <button type="button" disabled={annotationMode} onClick={resetHighlighting}>
             Reset selection
           </button>
         </div>
       </div>
 
       <div className="react-flow-product-controls">
-        <GraphSearchPanel
-          graph={graphData}
-          onSelect={handleSearchResult}
-        />
+        <fieldset className="graph-mode-controls" disabled={annotationMode}>
+          <GraphSearchPanel graph={graphData} onSelect={handleSearchResult} />
+        </fieldset>
 
         <div className="react-flow-control-group">
           <label htmlFor="react-flow-node-type">Node type</label>
@@ -2432,6 +2454,7 @@ return (
 
 
 
+        <fieldset className="graph-mode-controls" disabled={annotationMode}>
         <div className="react-flow-control-group react-flow-path-controls">
 
           <label>From</label>
@@ -2564,12 +2587,13 @@ return (
           </button>
         </div>
 
+        </fieldset>
         {actionMessage && (
           <span className="react-flow-action-message">{actionMessage}</span>
         )}
       </div>
 
-          <div className="react-flow-edit-panel">
+          <div className="react-flow-edit-panel" hidden={annotationMode}>
         {selectedNodeForEdit && (
           <div>
             <strong>Edit Node</strong>
@@ -2892,19 +2916,27 @@ return (
       ) : (
 
       <div
-        className="react-flow-container"
+        className={`react-flow-container workspace-${annotationWorkspace.mode}`}
+        data-annotation-tool={annotationWorkspace.tool}
         style={{ position: "relative" }}
         tabIndex={0}
         onFocusCapture={() => setKeyboardForm(false)}
         onPointerDownCapture={(event) => {
           setKeyboardForm(false);
-          if (!(event.target instanceof Element) || !event.target.closest("button, input, select, a")) event.currentTarget.focus();
+          const target = event.target instanceof Element ? event.target : null;
+          if (!target?.closest("button, input, textarea, select, a")) event.currentTarget.focus();
+          if (annotationMode) {
+            if (target?.closest(".react-flow__controls, .react-flow__panel, button, input, textarea, select, a")) return;
+            const hit = target?.closest<HTMLElement>("[data-annotation-id]");
+            annotationWorkspace.begin(event, hit?.dataset.annotationId, hit?.dataset.annotationResize as ResizeHandle | undefined);
+            return;
+          }
           handleRectanglePointerDown(event);
         }}
-        onPointerMoveCapture={handleRectanglePointerMove}
-        onPointerUpCapture={handleRectanglePointerUp}
-        onPointerCancelCapture={handleRectanglePointerCancel}
-        onLostPointerCapture={handleRectanglePointerCancel}
+        onPointerMoveCapture={(event) => { if (annotationMode) annotationWorkspace.move(event); else handleRectanglePointerMove(event); }}
+        onPointerUpCapture={(event) => { if (annotationMode) annotationWorkspace.end(event); else handleRectanglePointerUp(event); }}
+        onPointerCancelCapture={(event) => { annotationWorkspace.cancelPointer(event); handleRectanglePointerCancel(event); }}
+        onLostPointerCapture={(event) => { annotationWorkspace.cancelPointer(event); handleRectanglePointerCancel(event); }}
       >
         <Profiler
           id="MyWayReactFlow"
@@ -2928,14 +2960,18 @@ return (
           }}
         >
         <ReactFlow<ReactFlowNode, ReactFlowEdge>
-          nodes={layout.locked || deleteState.target ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes}
-          nodesDraggable={!layout.locked && !deleteState.target}
+          nodes={interactionNodes}
+          nodesDraggable={!annotationMode && !layout.locked && !deleteState.target}
+          elementsSelectable={!annotationMode}
+          nodesFocusable={!annotationMode}
+          edgesFocusable={!annotationMode}
           edges={previewEdges}
           nodeTypes={reactFlowNodeTypes}
           edgeTypes={reactFlowEdgeTypes}
           onNodesChange={handleNodesChange}
           autoPanOnNodeDrag
           onEdgesChange={(changes) => {
+            if (annotationMode) return;
             for (const change of changes) {
               if (change.type === "select") {
                 if (change.selected) ordinaryTarget.current = change.id;
@@ -2946,7 +2982,7 @@ return (
           }}
           onNodeClick={handleNodeClick}
           onEdgeClick={handleEdgeClick}
-          onPaneClick={resetHighlighting}
+          onPaneClick={annotationMode ? undefined : resetHighlighting}
           onInit={(instance) => {
             instanceRef.current = instance;
           }}
@@ -2964,7 +3000,8 @@ return (
           elevateEdgesOnSelect
         >
           <Background />
-          <Controls />
+          <AnnotationLayer annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked} />
+          <Controls showInteractive={!annotationMode} />
         </ReactFlow>
       </Profiler>
         {selectionRectangle && (

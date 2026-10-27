@@ -1,0 +1,37 @@
+.annotation-controls, .annotation-properties { display: flex; flex-direction: column; gap: 8px; }
+.annotation-button-row { display: flex; gap: 6px; }
+.annotation-button-row button { flex: 1; }
+.annotation-button-row button[aria-pressed="true"] { border: 2px solid #1d4ed8; background: #dbeafe; color: #172554; font-weight: 700; box-shadow: inset 0 -3px #1d4ed8; }
+.annotation-properties { margin: 0; min-width: 0; border: 1px solid #cbd5e1; }
+.annotation-properties label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.graph-crud-controls, .graph-mode-controls { margin: 0; padding: 0; min-width: 0; border: 0; }
+.graph-crud-controls { display: flex; flex-direction: column; gap: 16px; }
+.graph-mode-controls { display: flex; flex-direction: column; gap: 12px; }
+.react-flow-toolbar .graph-crud-controls > div { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; background: #f9fafb; border: 1px solid #e4e7ec; border-radius: 6px; }
+.graph-crud-controls:disabled, .graph-mode-controls:disabled { opacity: 0.55; }
+/* These siblings share the graph viewport transform but form independent layers. */
+.react-flow-container .react-flow__edges { z-index: 1; }
+.react-flow-container .react-flow__nodes { position: absolute; z-index: 2; }
+.annotation-rectangles, .annotation-texts, .annotation-hit-targets { position: absolute; top: 0; left: 0; pointer-events: none; }
+.annotation-rectangles { z-index: 0; }
+.annotation-texts { z-index: 3; }
+.annotation-hit-targets { z-index: 4; }
+.annotation-rectangle-visual, .annotation-rectangle-hit, .annotation-text-visual { position: absolute; box-sizing: border-box; }
+.annotation-rectangle-visual { pointer-events: none; }
+.annotation-rectangle-visual > div { position: absolute; inset: 0; }
+.annotation-text-visual { white-space: pre; pointer-events: none; }
+.annotation-rectangle-hit { pointer-events: auto; cursor: move; touch-action: none; }
+.annotation-selection { position: absolute; box-sizing: border-box; z-index: 5; pointer-events: none; outline: 2px dashed #1d4ed8; }
+.annotation-resize-handle { position: absolute; transform: translate(-50%, -50%); border: 1px solid #1d4ed8; background: white; pointer-events: auto; touch-action: none; }
+.annotation-resize-handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.annotation-resize-handle--n { left: 50%; top: 0; cursor: ns-resize; }
+.annotation-resize-handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.annotation-resize-handle--e { left: 100%; top: 50%; cursor: ew-resize; }
+.annotation-resize-handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.annotation-resize-handle--s { left: 50%; top: 100%; cursor: ns-resize; }
+.annotation-resize-handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.annotation-resize-handle--w { left: 0; top: 50%; cursor: ew-resize; }
+.workspace-annotation .react-flow__node, .workspace-annotation .react-flow__edge,
+.workspace-annotation .react-flow__node *, .workspace-annotation .react-flow__edge * { pointer-events: none !important; }
+.workspace-annotation[data-annotation-tool="rectangle"] .react-flow__pane,
+.workspace-annotation[data-annotation-tool="rectangle"] .annotation-rectangle-hit { cursor: crosshair; }
