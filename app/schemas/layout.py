@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 from typing import Annotated, Literal
 
 from pydantic import (
@@ -29,7 +30,53 @@ class PositionSnapshot(BaseModel):
         return self
 
 
-class LayoutCreate(PositionSnapshot):
+AnnotationColor = Literal["gray", "blue", "green", "yellow", "red", "purple"]
+
+
+class AnnotationBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: UUID
+    x: Coordinate
+    y: Coordinate
+    color: AnnotationColor
+
+
+class RectangleAnnotation(AnnotationBase):
+    kind: Literal["rectangle"]
+    width: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
+    height: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
+    fill: Literal["none", "light", "medium"]
+    border: Literal["thin", "normal", "thick"]
+
+
+class TextAnnotation(AnnotationBase):
+    kind: Literal["text"]
+    text: Annotated[str, StringConstraints(strict=True, min_length=1, max_length=2000)]
+    size: Literal["small", "medium", "large"]
+
+    @model_validator(mode="after")
+    def nonempty_text(self):
+        if not self.text.strip():
+            raise ValueError("Annotation text must not be whitespace-only")
+        return self
+
+
+Annotation = Annotated[RectangleAnnotation | TextAnnotation, Field(discriminator="kind")]
+
+
+class WorkspaceSnapshot(PositionSnapshot):
+    annotations: list[Annotation] = Field(max_length=2000)
+
+    @model_validator(mode="after")
+    def unique_annotations(self):
+        ids = [annotation.id for annotation in self.annotations]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Duplicate annotation IDs in workspace snapshot")
+        return self
+
+
+class LayoutCreate(WorkspaceSnapshot):
+    annotations: list[Annotation] = Field(default_factory=list, max_length=2000)
     name: LayoutName
     is_default: bool = Field(default=False, strict=True)
 
@@ -59,3 +106,4 @@ class LayoutRead(BaseModel):
 
 class LayoutDetail(LayoutRead):
     positions: list[Position]
+    annotations: list[Annotation]

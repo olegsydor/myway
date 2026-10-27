@@ -1,8 +1,8 @@
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Layout, LayoutNodePosition, Node, User
-from app.schemas.layout import LayoutCreate, LayoutDetail, LayoutRead, LayoutUpdate, Position, PositionSnapshot
+from app.models import LayoutAnnotation, Layout, LayoutNodePosition, Node, User
+from app.schemas.layout import LayoutCreate, LayoutDetail, LayoutRead, LayoutUpdate, Position, PositionSnapshot, WorkspaceSnapshot
 
 
 class LayoutError(Exception):
@@ -33,9 +33,18 @@ async def layout_detail(session: AsyncSession, user_id: int, layout_id: int) -> 
         LayoutNodePosition.user_id == user_id,
         LayoutNodePosition.layout_id == layout_id,
     ).order_by(LayoutNodePosition.node_id))).scalars()
+    annotations = (await session.execute(select(LayoutAnnotation).where(
+        LayoutAnnotation.user_id == user_id, LayoutAnnotation.layout_id == layout_id,
+    ).order_by(LayoutAnnotation.order_index))).scalars()
     return LayoutDetail(
         **LayoutRead.model_validate(layout).model_dump(),
         positions=[Position.model_validate(position) for position in positions],
+        annotations=[dict(id=row.annotation_id, **{
+            key: getattr(row, key) for key in (
+                ("kind", "x", "y", "color", "width", "height", "fill", "border")
+                if row.kind == "rectangle" else ("kind", "x", "y", "color", "text", "size")
+            )
+        }) for row in annotations],
     )
 
 
@@ -66,6 +75,19 @@ async def write_positions(session: AsyncSession, user_id: int, layout_id: int, d
         ])
 
 
+async def write_annotations(session: AsyncSession, user_id: int, layout_id: int, data: WorkspaceSnapshot) -> None:
+    await session.execute(delete(LayoutAnnotation).where(
+        LayoutAnnotation.user_id == user_id, LayoutAnnotation.layout_id == layout_id,
+    ))
+    # Individual inserts preserve nullable columns across mixed annotation kinds.
+    for index, annotation in enumerate(data.annotations):
+        values = annotation.model_dump()
+        values["annotation_id"] = values.pop("id")
+        await session.execute(insert(LayoutAnnotation).values(
+            user_id=user_id, layout_id=layout_id, order_index=index, **values,
+        ))
+
+
 async def make_default(session: AsyncSession, user_id: int, layout: Layout) -> None:
     # Flush the previous default removal before assigning the new default.
     await session.execute(update(Layout).where(
@@ -85,6 +107,7 @@ async def create_layout(session: AsyncSession, user_id: int, data: LayoutCreate)
     if not existing or data.is_default:
         await make_default(session, user_id, layout)
     await write_positions(session, user_id, layout.id, data)
+    await write_annotations(session, user_id, layout.id, data)
     await session.flush()
     # Materialize the accepted snapshot before commit: subsequent reads must not
     # turn an already-committed write into an apparent failed request.
@@ -99,6 +122,20 @@ async def replace_positions(session: AsyncSession, user_id: int, layout_id: int,
     layout = await get_layout(session, user_id, layout_id)
     await validate_snapshot(session, user_id, data)
     await write_positions(session, user_id, layout_id, data)
+    layout.updated_at = func.clock_timestamp()
+    await session.flush()
+    await session.refresh(layout)
+    result = await layout_detail(session, user_id, layout_id)
+    await session.commit()
+    return result
+
+
+async def replace_workspace(session: AsyncSession, user_id: int, layout_id: int, data: WorkspaceSnapshot) -> LayoutDetail:
+    await lock_owner(session, user_id)
+    layout = await get_layout(session, user_id, layout_id)
+    await validate_snapshot(session, user_id, data)
+    await write_positions(session, user_id, layout_id, data)
+    await write_annotations(session, user_id, layout_id, data)
     layout.updated_at = func.clock_timestamp()
     await session.flush()
     await session.refresh(layout)

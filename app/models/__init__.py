@@ -1,3 +1,4 @@
+from app.models.layout_annotation import LayoutAnnotation
 from app.models.edge import Edge
 from app.models.edge_type import EdgeType
 from app.models.layout import Layout
@@ -10,6 +11,7 @@ __all__ = [
     "Edge",
     "EdgeType",
     "Layout",
+    "LayoutAnnotation",
     "LayoutNodePosition",
     "Node",
     "NodeType",

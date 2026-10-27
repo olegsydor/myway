@@ -14,7 +14,7 @@ from app.core.database import get_db_session
 from app.dependencies.auth import get_current_user
 from app.models import User
 from app.repositories import layout as repository
-from app.schemas.layout import LayoutCreate, LayoutDetail, LayoutRead, LayoutUpdate, PositionSnapshot
+from app.schemas.layout import LayoutCreate, LayoutDetail, LayoutRead, LayoutUpdate, PositionSnapshot, WorkspaceSnapshot
 
 class LayoutRoute(APIRoute):
     def get_route_handler(self):
@@ -100,6 +100,15 @@ async def replace_positions(
     current_user: User = Depends(get_current_user),
 ):
     return await run(session, repository.replace_positions(session, current_user.id, layout_id, data))
+
+
+@router.put("/{layout_id}/workspace", response_model=LayoutDetail)
+async def replace_workspace(
+    layout_id: int, data: WorkspaceSnapshot,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    return await run(session, repository.replace_workspace(session, current_user.id, layout_id, data))
 
 
 @router.delete("/{layout_id}", status_code=204)
