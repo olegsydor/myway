@@ -68,3 +68,13 @@ test('Annotation mode disables graph CRUD shortcuts but retains workspace Save a
   assert.deepEqual(dispatch('Escape', {workspaceMode:'annotation', busy:true, annotationGesture:false}).actions, []);
   assert.deepEqual(dispatch('Escape', {workspaceMode:'annotation', annotationGesture:true, modal:true}).actions, []);
 });
+
+test('inline Text edit routes Escape centrally while keeping typing, Enter and Backspace native', () => {
+  const editor = {workspaceMode:'annotation', annotationEditing:true, editable:true, busy:true};
+  assert.deepEqual(dispatch('Escape', editor), {prevented:true,actions:['cancelAnnotation']});
+  for (const k of ['Enter','Backspace','Delete','n','e']) assert.deepEqual(dispatch(k, editor), {prevented:false,actions:[]});
+  assert.deepEqual(dispatch('s', editor, {metaKey:true}), {prevented:true,actions:['notice']});
+  for (const extra of [{isComposing:true},{repeat:true}]) assert.deepEqual(dispatch('Escape', editor, extra).actions, []);
+  assert.deepEqual(dispatch('Escape', {...editor, modal:true}).actions, []);
+  assert.deepEqual(dispatch('Escape', {...editor, workspaceMode:'graph'}), {prevented:false,actions:[]});
+});

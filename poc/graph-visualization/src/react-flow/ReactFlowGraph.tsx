@@ -1246,6 +1246,7 @@ const handleNodesChange = useCallback(
   useGraphShortcuts({
     workspaceMode: annotationWorkspace.mode,
     annotationGesture: annotationWorkspace.gestureActive,
+    annotationEditing: Boolean(annotationWorkspace.editor),
     busy: layout.blocked || layout.isLocked(),
     form: keyboardForm || Boolean(document.activeElement?.closest(
       ".react-flow-edit-panel, [data-graph-create]")),
@@ -2932,6 +2933,14 @@ return (
             return;
           }
           handleRectanglePointerDown(event);
+        }}
+        onDoubleClickCapture={(event) => {
+          // Captured pointer-up events can retarget a double-click to the canvas.
+          if (annotationMode && annotationWorkspace.selected?.kind === "text" &&
+              !(event.target instanceof Element && event.target.closest("[data-annotation-editor]"))) {
+            event.preventDefault(); event.stopPropagation();
+            annotationWorkspace.editText(annotationWorkspace.selected.id);
+          }
         }}
         onPointerMoveCapture={(event) => { if (annotationMode) annotationWorkspace.move(event); else handleRectanglePointerMove(event); }}
         onPointerUpCapture={(event) => { if (annotationMode) annotationWorkspace.end(event); else handleRectanglePointerUp(event); }}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clearEdgeHighlights, clearNodeHighlights, finishRectangle, rectanglePreview, RESIZE_HANDLES, type RectangleGesture } from "../src/react-flow/annotationInteraction.ts";
-import { rectangle } from "./annotationFixtures.ts";
+import { clearEdgeHighlights, clearNodeHighlights, finishRectangle, rectanglePreview, textMovePreview, RESIZE_HANDLES, type RectangleGesture } from "../src/react-flow/annotationInteraction.ts";
+import { rectangle, text } from "./annotationFixtures.ts";
 
 const start = { x: 10, y: 20 };
 function gesture(kind: RectangleGesture["kind"], handle?: RectangleGesture["handle"]): RectangleGesture {
@@ -60,4 +60,12 @@ test("entering Annotation clears graph highlights while preserving hidden flags,
   assert.equal(clearedNodes[0].data, nodes[0].data);
   assert.equal(clearedEdges[0].source, edges[0].source);
   assert.equal(nodes[0].selected, true);
+});
+
+
+test("Text movement preserves content/styles and rejects invalid or overflowing coordinates", () => {
+  assert.deepEqual(textMovePreview(text, { x: 10, y: 20 }, { x: 30, y: -10 }), { ...text, x: text.x + 20, y: text.y - 30 });
+  assert.equal(textMovePreview(text, { x: 10, y: 20 }, { x: Infinity, y: 0 }), null);
+  assert.equal(textMovePreview({ ...text, x: Number.MAX_VALUE }, { x: 0, y: 0 }, { x: Number.MAX_VALUE, y: 0 }), null);
+  assert.equal(textMovePreview({ ...text, x: Number.MAX_VALUE }, { x: Number.MAX_VALUE, y: 0 }, { x: Number.MAX_VALUE, y: 0 })?.x, Number.MAX_VALUE);
 });

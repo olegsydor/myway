@@ -29,7 +29,7 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 // Python str.strip()/PostgreSQL contract, including NEL and excluding BOM.
 const whitespace = new Set([9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 133, 160, 5760,
   8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288]);
-const hasNonWhitespace = (text: string) => [...text].some((character) => !whitespace.has(character.codePointAt(0)!));
+export const annotationTextHasContent = (text: string) => [...text].some((character) => !whitespace.has(character.codePointAt(0)!));
 
 /** Validate external data and copy it into a canonical, detached snapshot. */
 export function annotationSnapshot(candidate: unknown): Annotation[] {
@@ -65,7 +65,7 @@ export function annotationSnapshot(candidate: unknown): Annotation[] {
       return { ...common, kind: "rectangle", width: row.width, height: row.height,
         fill: row.fill as RectangleAnnotation["fill"], border: row.border as RectangleAnnotation["border"] };
     }
-    if (typeof row.text !== "string" || !hasNonWhitespace(row.text) ||
+    if (typeof row.text !== "string" || !annotationTextHasContent(row.text) ||
         [...row.text].length > ANNOTATION_TEXT_LIMIT ||
         !["small", "medium", "large"].includes(row.size as string)) {
       throw new Error(`Text annotations require non-empty text up to ${ANNOTATION_TEXT_LIMIT} characters and a valid size`);

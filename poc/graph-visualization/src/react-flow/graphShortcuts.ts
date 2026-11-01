@@ -25,6 +25,7 @@ export interface ShortcutContext {
   canvas: boolean; editable: boolean; modal: boolean; busy: boolean; form: boolean;
   workspaceMode?: "graph" | "annotation";
   annotationGesture?: boolean;
+  annotationEditing?: boolean;
   run: (action: ShortcutAction) => void; notice: () => void;
 }
 export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext): boolean {
@@ -33,15 +34,16 @@ export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext)
   if (action === "saveLayout") {
     event.preventDefault();
     if (event.repeat || event.isComposing) return true;
-    if (context.form || context.modal) context.notice();
+    if (context.form || context.modal || context.annotationEditing) context.notice();
     else if (!context.busy) context.run(action);
     return true;
   }
   if (action === "cancelAnnotation" && context.workspaceMode !== "annotation") return false;
   if (context.workspaceMode === "annotation" && (action === "createNode" || action === "createEdge")) return false;
+  const cancellingEditor = action === "cancelAnnotation" && context.workspaceMode === "annotation" && context.annotationEditing;
   const cancellingGesture = action === "cancelAnnotation" && context.annotationGesture;
   if (event.defaultPrevented || event.repeat || event.isComposing || !context.canvas ||
-      context.editable || context.modal || (context.busy && !cancellingGesture) || context.form) return false;
+      (context.editable && !cancellingEditor) || context.modal || (context.busy && !cancellingGesture && !cancellingEditor) || context.form) return false;
   event.preventDefault();
   context.run(action);
   return true;

@@ -396,3 +396,53 @@ test("switching a layout clears Rectangle tool and selection without leaving Ann
   assert.equal(interaction.selectedId, null);
   assert.deepEqual(current.annotations, [rectangle]);
 });
+
+async function createTextAnnotation() {
+  await run(() => interaction.switchMode("annotation"));
+  await run(() => interaction.setActiveTool("text"));
+  await run(() => interaction.begin(annotationPointer(30, 50)));
+  await run(() => interaction.updateText("Text\nwith 🌍"));
+}
+
+test("Text editing blocks Save and recovery, then commits a complete latest snapshot", async () => {
+  await createTextAnnotation();
+  assert.equal(current.dirty, false);
+  assert.equal(current.blocked, true);
+  assert.equal(await run(() => current.save()), false);
+  await run(() => delay(550));
+  assert.equal(await readLayoutRecovery(scope, 1), null);
+  await run(() => interaction.commitText());
+  const accepted = current.annotations[1];
+  assert.equal(current.dirty, true);
+  await run(() => delay(550));
+  const draft = await readLayoutRecovery(scope, 1) as any;
+  assert.deepEqual(draft.annotations, [text, accepted]);
+  assert.equal(await run(() => current.save()), true);
+  assert.deepEqual(layouts.get(1)?.annotations, [text, accepted]);
+  assert.equal(current.dirty, false);
+});
+
+test("mode exit commits Text before guarded Save and Discard restores full workspace", async () => {
+  await createTextAnnotation();
+  await run(() => interaction.switchMode("graph"));
+  assert.equal(current.blocked, false);
+  assert.equal(current.annotations.length, 2);
+  assert.equal(current.dirty, true);
+  assert.equal(await run(() => current.discard()), true);
+  assert.deepEqual(state(), clean());
+  assert.equal(interaction.mode, "graph");
+});
+
+test("failed Text Save preserves committed working content, recovery and accepted baseline", async () => {
+  await run(() => interaction.switchMode("annotation"));
+  await run(() => interaction.editText(text.id));
+  await run(() => interaction.updateText("Updated\nexisting text"));
+  await run(() => interaction.commitText());
+  failSave = true;
+  assert.equal(await run(() => current.save()), false);
+  assert.equal(current.annotations[0].kind === "text" && current.annotations[0].text, "Updated\nexisting text");
+  assert.equal(current.dirty, true);
+  failSave = false;
+  await run(() => current.discard());
+  assert.deepEqual(state(), clean());
+});

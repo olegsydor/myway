@@ -1,3 +1,4 @@
+import { AnnotationTextEditor } from "./AnnotationTextEditor";
 import { ViewportPortal, useViewport } from "@xyflow/react";
 import type { Annotation, RectangleAnnotation } from "../shared/annotations";
 import { ANNOTATION_COLORS, ANNOTATION_TEXT_SIZE, rectangleStyle } from "./annotationStyles";
@@ -10,9 +11,12 @@ export function AnnotationLayer({ annotations, workspace, locked }: {
 }) {
   const { zoom } = useViewport();
   const rectangles = annotations.filter((annotation): annotation is RectangleAnnotation => annotation.kind === "rectangle");
-  const displayed = rectangles.map((rectangle) => workspace.preview?.id === rectangle.id ? workspace.preview : rectangle);
-  const newPreview = workspace.preview && !rectangles.some((rectangle) => rectangle.id === workspace.preview!.id)
-    ? workspace.preview : null;
+  const rectanglePreview = workspace.preview?.kind === "rectangle" ? workspace.preview : null;
+  const displayed = rectangles.map((rectangle) => rectanglePreview?.id === rectangle.id ? rectanglePreview : rectangle);
+  const newPreview = rectanglePreview && !rectangles.some((rectangle) => rectangle.id === rectanglePreview.id) ? rectanglePreview : null;
+  const texts = annotations.filter((annotation) => annotation.kind === "text").map((annotation) =>
+    workspace.preview?.kind === "text" && workspace.preview.id === annotation.id ? workspace.preview : annotation);
+  const selectedText = texts.find((annotation) => annotation.id === workspace.selectedId);
   const selected = displayed.find((rectangle) => rectangle.id === workspace.selectedId) ?? newPreview;
   const interactive = workspace.mode === "annotation" && !locked;
   return <ViewportPortal>
@@ -28,9 +32,11 @@ export function AnnotationLayer({ annotations, workspace, locked }: {
       })}
     </div>
     <div className="annotation-texts" aria-hidden="true">
-      {annotations.filter((annotation) => annotation.kind === "text").map((annotation) =>
-        <div key={annotation.id} className="annotation-text-visual" style={{ left: annotation.x, top: annotation.y,
-          color: ANNOTATION_COLORS[annotation.color], fontSize: ANNOTATION_TEXT_SIZE[annotation.size] }}>
+      {texts.filter((annotation) => annotation.id !== workspace.editor?.annotation.id).map((annotation) =>
+        <div key={annotation.id} className={`annotation-text-visual${interactive ? " annotation-text-hit nodrag nopan" : ""}`}
+          data-annotation-visual={annotation.id} data-annotation-id={interactive ? annotation.id : undefined}
+          onDoubleClick={interactive ? (event) => { event.stopPropagation(); workspace.editText(annotation.id); } : undefined}
+          style={{ left: annotation.x, top: annotation.y, color: ANNOTATION_COLORS[annotation.color], fontSize: ANNOTATION_TEXT_SIZE[annotation.size] }}>
           {annotation.text}
         </div>)}
     </div>
@@ -39,6 +45,10 @@ export function AnnotationLayer({ annotations, workspace, locked }: {
         className="annotation-rectangle-hit nodrag nopan" data-annotation-id={rectangle.id}
         style={{ left: rectangle.x, top: rectangle.y, width: rectangle.width, height: rectangle.height }} />)}
     </div>
+    {workspace.mode === "annotation" && selectedText && !workspace.editor && <div
+      className="annotation-text-selection" aria-hidden="true" style={{ left: selectedText.x, top: selectedText.y,
+        fontSize: ANNOTATION_TEXT_SIZE[selectedText.size], outlineWidth: 2 / zoom }}>{selectedText.text}</div>}
+    {workspace.mode === "annotation" && workspace.editor && <AnnotationTextEditor workspace={workspace} zoom={zoom} />}
     {workspace.mode === "annotation" && selected && <div className="annotation-selection" aria-hidden="true"
       style={{ left: selected.x, top: selected.y, width: selected.width, height: selected.height,
         outlineWidth: 2 / zoom }}>

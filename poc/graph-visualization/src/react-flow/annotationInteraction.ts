@@ -1,8 +1,8 @@
-import { RECTANGLE_MIN_SIZE, normalizeRectangle, type RectangleAnnotation } from "../shared/annotations.ts";
+import { RECTANGLE_MIN_SIZE, normalizeRectangle, type RectangleAnnotation, type TextAnnotation } from "../shared/annotations.ts";
 import type { CSSProperties } from "react";
 
 export type WorkspaceMode = "graph" | "annotation";
-export type AnnotationTool = "select" | "rectangle";
+export type AnnotationTool = "select" | "rectangle" | "text";
 export type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 export const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 export interface Point { x: number; y: number }
@@ -60,4 +60,9 @@ export function clearEdgeHighlights<T extends { selected?: boolean; style?: CSSP
     markerEnd: typeof edge.markerEnd === "object" && edge.markerEnd !== null
       ? { ...edge.markerEnd, color: "#94a3b8" } : edge.markerEnd,
   }));
+}
+
+export function textMovePreview(original: TextAnnotation, start: Point, point: Point): TextAnnotation | null {
+  const x = original.x + (point.x - start.x), y = original.y + (point.y - start.y);
+  return [x, y, start.x, start.y, point.x, point.y].every(Number.isFinite) ? { ...original, x, y } : null;
 }
