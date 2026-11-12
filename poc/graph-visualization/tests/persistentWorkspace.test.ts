@@ -530,3 +530,22 @@ test("blocked preference writes do not turn accepted Save into failure", async (
   assert.equal(current.dirty, false);
   assert.ok(activeLayoutKey(scope));
 });
+
+
+test("camera transition distinguishes workspace destinations from new identity and content Discard", async () => {
+  const startup = current.cameraTransition;
+  await run(() => current.move(66));
+  await run(() => current.discard());
+  assert.equal(current.cameraTransition, startup);
+  await run(() => current.switchTo(2, "discard"));
+  assert.equal(current.cameraTransition.preserve, false);
+  assert.ok(current.cameraTransition.generation > startup.generation);
+  await run(() => current.saveAsNew("Camera copy"));
+  assert.equal(current.cameraTransition.preserve, true);
+  const created = current.cameraTransition;
+  await run(() => current.move(55));
+  await run(() => current.save());
+  assert.equal(current.cameraTransition, created);
+  await run(() => current.deleteActive());
+  assert.equal(current.cameraTransition.preserve, false);
+});

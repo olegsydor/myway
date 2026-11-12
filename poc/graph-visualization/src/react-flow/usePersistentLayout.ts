@@ -1,4 +1,4 @@
-import { readActiveLayout, writeActiveLayout, removeActiveLayout } from "./workspacePreferences.ts";
+import { readActiveLayout, writeActiveLayout, removeActiveLayout, removeViewport } from "./workspacePreferences.ts";
 import { selectStartupLayout } from "./startupLayout.ts";
 import { annotationSnapshot, type Annotation } from "../shared/annotations.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
@@ -46,6 +46,7 @@ type Phase =
   | "load-error";
 
 export function usePersistentLayout(options: Options) {
+  const [cameraTransition, setCameraTransition] = useState({ generation: 0, preserve: false });
   const [phase, setPhase] = useState<Phase>("loading");
   const [startupReady, setStartupReady] = useState(false);
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
@@ -355,6 +356,7 @@ useEffect(() => {
   }
 
   function acceptSnapshot(accepted: LayoutDetail) {
+    if (accepted.id !== active?.id) setCameraTransition((previous) => ({ generation: previous.generation + 1, preserve: true }));
     remember(accepted);
     setActive(accepted);
     writeActiveLayout(latest.current.recoveryScope, accepted.id);
@@ -367,6 +369,7 @@ useEffect(() => {
     const restored = restoreWorkspace(latest.current.nodes, accepted, fallback);
     latest.current.setNodes(restored.nodes);
     acceptSnapshot(accepted);
+    setCameraTransition((previous) => ({ generation: previous.generation + 1, preserve: false }));
     latest.current.onSwitched();
     latest.current.onRestored();
   }
@@ -526,6 +529,7 @@ useEffect(() => {
 
       if (alive.current) {
         setLayouts((previous) => previous.filter((layout) => layout.id !== active.id));
+        removeViewport(latest.current.recoveryScope, deletedLayoutId);
         applyLayout(destination);
         setNotice("Layout deleted; default layout opened");
       }
@@ -648,7 +652,7 @@ async function discardRecovery(): Promise<void> {
 }
 
   return {
-    active, layouts, dirty, phase, startupReady,
+    active, layouts, dirty, phase, startupReady, cameraTransition,
     recoveryOffer,
     recoveryBusy,
     restoreRecovery,

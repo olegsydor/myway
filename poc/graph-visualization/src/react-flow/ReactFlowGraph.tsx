@@ -1,3 +1,4 @@
+import { useLayoutViewport } from "./useLayoutViewport";
 import { ToolsPanel } from "../shell/ToolsPanel";
 import { useToolsPanel } from "../shell/useToolsPanel";
 import { useCreateFormFocus } from "../shell/useCreateFormFocus";
@@ -312,12 +313,13 @@ useEffect(() => {
       setBranchSelection(null);
       setManualGroup(null);
     },
-    onRestored: () => {
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        void instanceRef.current?.fitView({ padding: 0.1, duration: 300 });
-      }));
-    },
+    onRestored: () => {},
   });
+
+  const camera = useLayoutViewport({ scope: recoveryScope, id: layout.active?.id ?? null,
+    startupReady: layout.startupReady, flowReady, transition: layout.cameraTransition, instance: instanceRef });
+
+  const fitCamera = camera.fit;
 
   function exportDiagnostics() {
   const diagnostics = diagnosticsRef.current;
@@ -966,7 +968,7 @@ const handleNodesChange = useCallback(
           .filter((node) => nodeIds.has(node.id));
 
         if (matchingNodes.length > 0) {
-          void instance.fitView({
+          void fitCamera({
             nodes: matchingNodes,
             padding: 0.2,
             duration: 300,
@@ -1803,14 +1805,14 @@ const handleNodesChange = useCallback(
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          void instanceRef.current?.fitView({
+          void fitCamera({
             padding: 0.1,
             duration: 300,
           });
         });
       });
     },
-    [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty, annotationMode],
+    [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty, annotationMode, fitCamera],
   );
 
   const formActive = keyboardForm || Boolean(document.activeElement?.closest(
@@ -1825,7 +1827,7 @@ const handleNodesChange = useCallback(
       }
       return layout.save();
     }, focusForm, arrange: name => runLayout(name), reset: () => resetHighlighting(),
-    fit: () => { void instanceRef.current?.fitView({ padding: 0.1, duration: 300 }); },
+    fit: () => { void fitCamera({ padding: 0.1, duration: 300 }); },
   });
 
   useGraphShortcuts({
@@ -2904,7 +2906,7 @@ return (
       <div
         className={`react-flow-container workspace-${annotationWorkspace.mode}`}
         data-annotation-tool={annotationWorkspace.tool}
-        style={{ position: "relative" }}
+        style={{ position: "relative", visibility: camera.ready ? "visible" : "hidden" }}
         tabIndex={0}
         onFocusCapture={() => setKeyboardForm(false)}
         onPointerDownCapture={(event) => {
@@ -2981,8 +2983,7 @@ return (
             instanceRef.current = instance;
             setFlowReady(true);
           }}
-          fitView
-          fitViewOptions={{ padding: 0.1 }}
+          onMoveEnd={camera.moved}
           minZoom={0.05}
           maxZoom={4}
           nodesConnectable={false}
