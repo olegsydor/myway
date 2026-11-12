@@ -1,3 +1,4 @@
+import { ApplicationShell } from "./shell/ApplicationShell"
 import { lazy, Suspense, useEffect, useState } from 'react'
 
 import './App.css'
@@ -43,35 +44,20 @@ function App() {
     void loadInitialGraph()
   }, [])
 
+  if (graph) return <Suspense fallback={<ApplicationShell bar={<strong>My Way</strong>}><p>Loading graph…</p></ApplicationShell>}>
+    <ReactFlowGraph graph={graph} onGraphChanged={refreshGraph} recoveryScope={layoutRecoveryScope(graph.user_id)} />
+  </Suspense>
+
   return (
-    <div className="app">
-      <header className="app__header">
-        <div>
-          <h1>My Way</h1>
-          <p>Personal graph</p>
-        </div>
-      </header>
+    <ApplicationShell bar={<strong>My Way</strong>}>
+      {error && <p className="error">{error}</p>}
 
-      <main className="app__content">
-        {error && <p className="error">{error}</p>}
+      {isLoading && !graph && <p>Loading graph…</p>}
 
-        {isLoading && !graph && <p>Loading graph…</p>}
-
-        {!isLoading && !graph && !error && (
-          <p>No graph data available.</p>
-        )}
-
-        {graph && (
-          <Suspense fallback={<p>Loading graph…</p>}>
-            <ReactFlowGraph
-              graph={graph}
-              onGraphChanged={refreshGraph}
-              recoveryScope={layoutRecoveryScope(graph.user_id)}
-            />
-          </Suspense>
-        )}
-      </main>
-    </div>
+      {!isLoading && !graph && !error && (
+        <p>No graph data available.</p>
+      )}
+    </ApplicationShell>
   )
 }
 

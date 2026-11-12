@@ -4,17 +4,11 @@ import type { AnnotationWorkspace } from "./useAnnotationWorkspace";
 import type { AnnotationColor, RectangleAnnotation, TextAnnotation } from "../shared/annotations";
 
 export function AnnotationControls({ workspace, locked }: { workspace: AnnotationWorkspace; locked: boolean }) {
+  if (workspace.mode !== "annotation") return null;
   const rectangle = workspace.selected?.kind === "rectangle" ? workspace.selected : null;
   const text = workspace.selected?.kind === "text" ? workspace.selected : null;
   const propertiesLocked = locked || Boolean(workspace.editor) || workspace.gestureActive || Boolean(workspace.deleteTarget);
   return <div className="annotation-controls">
-    <strong>Workspace mode</strong>
-    <div className="annotation-button-row" role="group" aria-label="Workspace mode">
-      <button type="button" aria-pressed={workspace.mode === "graph"} disabled={locked || Boolean(workspace.deleteTarget)}
-        onClick={() => workspace.switchMode("graph")}>Graph</button>
-      <button type="button" aria-pressed={workspace.mode === "annotation"} disabled={locked || Boolean(workspace.deleteTarget)}
-        onClick={() => workspace.switchMode("annotation")}>Annotation</button>
-    </div>
     {workspace.mode === "annotation" && <>
       <div className="annotation-button-row" role="group" aria-label="Annotation tools">
         <button type="button" aria-pressed={workspace.tool === "select"} disabled={locked || Boolean(workspace.deleteTarget)}
@@ -80,4 +74,15 @@ export function AnnotationDeleteDialog({ workspace, locked }: { workspace: Annot
       <button type="button" disabled={locked} onClick={workspace.confirmDelete}>Delete</button>
     </div>
   </dialog>;
+}
+
+export function WorkspaceModeSwitch({ workspace, locked }: { workspace: AnnotationWorkspace; locked: boolean }) {
+  return (
+    <div className="annotation-button-row" role="group" aria-label="Workspace mode">
+      <button type="button" aria-pressed={workspace.mode === "graph"} disabled={locked || Boolean(workspace.deleteTarget)}
+        onClick={() => workspace.switchMode("graph")}>Graph</button>
+      <button type="button" aria-pressed={workspace.mode === "annotation"} disabled={locked || Boolean(workspace.deleteTarget)}
+        onClick={() => workspace.switchMode("annotation")}>Annotation</button>
+    </div>
+  );
 }

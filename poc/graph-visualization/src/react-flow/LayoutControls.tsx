@@ -1,18 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { usePersistentLayout } from "./usePersistentLayout";
+import type { Command } from "./workspaceCommands";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { layoutMenu, layoutStatus, type LayoutController, type LayoutDialog } from "./layoutMenu";
+import type { MenuItem } from "../shell/menuModel";
 
-type LayoutController = ReturnType<typeof usePersistentLayout>;
-type LayoutDialog = { kind: "new" | "rename" | "delete" } | { kind: "switch"; id: number; name: string };
-
-export function LayoutControls({ layout, onRefreshGraph }: {
+export function LayoutControls({ layout, saveCommand, children }: {
   layout: LayoutController;
-  onRefreshGraph: () => Promise<void>;
+  saveCommand: Command;
+  children: (surface: { items: MenuItem[]; status: string; dialogOpen: boolean }) => ReactNode;
 }) {
   const [dialog, setDialog] = useState<LayoutDialog | null>(null);
   const [name, setName] = useState("");
   const [validation, setValidation] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const [returnFocus, setReturnFocus] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const element = dialogRef.current;
@@ -22,10 +23,15 @@ export function LayoutControls({ layout, onRefreshGraph }: {
         nameRef.current?.focus();
         nameRef.current?.select();
       }
-    } else if (!dialog && element?.open) element.close();
-  }, [dialog]);
+    } else if (!dialog && element?.open) {
+      element.close();
+      returnFocus?.focus();
+    }
+  }, [dialog, returnFocus]);
 
   function open(next: LayoutDialog) {
+    if (layout.blocked || layout.isLocked()) return;
+    setReturnFocus(document.querySelector<HTMLElement>('[data-application-menu="layout"]'));
     layout.clearError();
     setValidation("");
     setName(next.kind === "rename" ? layout.active?.name ?? "" : "");
@@ -48,58 +54,8 @@ export function LayoutControls({ layout, onRefreshGraph }: {
     if (await layout.switchTo(dialog.id, choice)) setDialog(null);
   }
 
-  const status = layout.phase === "loading" ? "Loading layout…" :
-    layout.phase === "load-error" ? "Layout could not be loaded" :
-    layout.phase === "saving" ? "Saving layout…" :
-    layout.phase === "switching" ? "Opening layout…" :
-    layout.phase === "managing" ? "Updating layout…" :
-    layout.dirty ? "Unsaved changes" : "Saved";
-
-  return (
-    <div className="react-flow-persistent-layout" aria-label="Saved layout">
-      <strong>Saved layout</strong>
-      <label>
-        Layout
-        <select aria-label="Active layout" value={layout.active?.id ?? ""} disabled={layout.blocked}
-          onChange={(event) => {
-            const id = Number(event.target.value);
-            const target = layout.layouts.find((item) => item.id === id);
-            if (!target || target.id === layout.active?.id) return;
-            if (layout.dirty) open({ kind: "switch", id, name: target.name });
-            else void layout.switchTo(id, "discard");
-          }}>
-          {!layout.active && <option value="">Unsaved initial layout</option>}
-          {layout.layouts.map((item) => <option key={item.id} value={item.id}>
-            {item.name}{item.is_default ? " (default)" : ""}
-          </option>)}
-        </select>
-      </label>
-      <span role="status" aria-live="polite">{status}</span>
-      {layout.error && <p className="error" role="alert">{layout.error}</p>}
-      {layout.notice && <p>{layout.notice}</p>}
-      {layout.phase === "load-error" ? (
-        <button type="button" onClick={layout.retry}>Retry loading layout</button>
-      ) : <>
-        <button type="button" onClick={() => void layout.save()} disabled={layout.blocked || !layout.dirty}>
-          {layout.phase === "saving" ? "Saving…" : "Save layout"}
-        </button>
-        <button type="button" onClick={layout.discard} disabled={!layout.canDiscard}>Discard changes</button>
-        <button type="button" onClick={() => open({ kind: "new" })} disabled={layout.blocked}>Save as new layout</button>
-        <details>
-          <summary>Manage layout</summary>
-          <div className="layout-management-actions">
-            <button type="button" onClick={() => open({ kind: "rename" })} disabled={layout.blocked || !layout.active}>Rename</button>
-            <button type="button" onClick={() => void layout.setDefault()}
-              disabled={layout.blocked || !layout.active || layout.active.is_default}>Set as default</button>
-            <button type="button" onClick={() => open({ kind: "delete" })}
-              disabled={layout.blocked || !layout.canDelete}>Delete layout</button>
-            {layout.active?.is_default && <small>Choose another default before deleting this layout.</small>}
-          </div>
-        </details>
-        {layout.error && <button type="button" disabled={layout.blocked}
-          onClick={() => void onRefreshGraph()}>Refresh graph</button>}
-      </>}
-
+  return <>
+    {children({ items: layoutMenu(layout, saveCommand, open), status: layoutStatus(layout), dialogOpen: Boolean(dialog) })}
       <dialog ref={dialogRef} className="layout-dialog" aria-labelledby="layout-dialog-title"
         onCancel={(event) => {
           event.preventDefault();
@@ -143,6 +99,19 @@ export function LayoutControls({ layout, onRefreshGraph }: {
           </div>
         </> : null}
       </dialog>
-    </div>
-  );
+  </>;
+}
+
+/** Errors and recovery actions remain visible outside the compact menu surface. */
+export function LayoutMessages({ layout, onRefreshGraph }: {
+  layout: LayoutController; onRefreshGraph: () => Promise<void>;
+}) {
+  if (!layout.error && !layout.notice && layout.phase !== "load-error") return null;
+  return <div className="layout-messages">
+    {layout.error && <p className="error" role="alert">{layout.error}</p>}
+    {layout.notice && <p role="status">{layout.notice}</p>}
+    {layout.phase === "load-error" && <button type="button" onClick={layout.retry}>Retry loading layout</button>}
+    {layout.error && layout.phase !== "load-error" && <button type="button" disabled={layout.blocked}
+      onClick={() => void onRefreshGraph()}>Refresh graph</button>}
+  </div>;
 }

@@ -1,0 +1,15 @@
+export const SHORTCUT_HELP = [
+  ['Cmd/Ctrl+S', 'Save layout'],
+  ['N', 'Focus New Node'],
+  ['E', 'Focus New Edge'],
+  ['Delete / Backspace', 'Request deletion of the single ordinary graph selection'],
+  ['Escape', 'Cancel the current annotation gesture or text editor when applicable'],
+  ['Arrow / Shift+Arrow', 'Move an active branch or manual group'],
+  ['Ctrl/Cmd+click', 'Toggle a node in a manual group'],
+  ['Shift-drag', 'Select a manual group with a rectangle'],
+  ['Tab / Shift+Tab', 'Enter or leave the application menubar'],
+  ['Left / Right', 'Move between application menus; open or leave a submenu'],
+  ['Enter / Space / ArrowDown', 'Open a menu; Enter or Space invokes an item'],
+  ['Up / Down / Home / End', 'Move through enabled menu items'],
+  ['Escape in a menu', 'Close a submenu or menu and return focus to its button'],
+] as const;

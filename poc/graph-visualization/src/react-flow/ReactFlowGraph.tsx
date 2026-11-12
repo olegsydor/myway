@@ -1,3 +1,9 @@
+import { ToolsPanel } from "../shell/ToolsPanel";
+import { useToolsPanel } from "../shell/useToolsPanel";
+import { useCreateFormFocus } from "../shell/useCreateFormFocus";
+import { ApplicationShell } from "../shell/ApplicationShell";
+import { ApplicationBar } from "../shell/ApplicationBar";
+import { useWorkspaceCommands } from "./workspaceCommands";
 import { AnnotationControls, AnnotationDeleteDialog } from "./AnnotationControls";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotationWorkspace } from "./useAnnotationWorkspace";
@@ -66,7 +72,7 @@ import { NodeSearchSelect } from './NodeSearchSelect'
 import { GraphSearchPanel } from "./GraphSearchPanel";
 
 import { usePersistentLayout } from "./usePersistentLayout";
-import { LayoutControls } from "./LayoutControls";
+import { LayoutControls, LayoutMessages } from "./LayoutControls";
 
 import { MyWayNode } from "./MyWayNode";
 import { MyWayEdge } from "./MyWayEdge";
@@ -284,6 +290,7 @@ useEffect(() => {
   const [isRefreshingGraph, setIsRefreshingGraph] = useState(false);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [annotationBusy, setAnnotationBusy] = useState(false);
+  const [flowReady, setFlowReady] = useState(false);
   const graphBusy = isCreatingNode || isUpdatingNode || isDeletingNode ||
     isCreatingEdge || isUpdatingEdge || isDeletingEdge || isRefreshingGraph;
   const layout = usePersistentLayout({
@@ -1231,42 +1238,14 @@ const handleNodesChange = useCallback(
     },
   }));
 
-  const formSections = {
-    createNode: useRef<HTMLDivElement>(null), createEdge: useRef<HTMLDivElement>(null),
-  };
+  const toolsPanel = useToolsPanel();
+  const formSections = useCreateFormFocus(toolsPanel.open, toolsPanel.show);
   const [keyboardForm, setKeyboardForm] = useState(false);
-  function focusForm(key: keyof typeof formSections) {
+  function focusForm(key: "createNode" | "createEdge") {
     setKeyboardForm(true);
-    requestAnimationFrame(() => {
-      const section = formSections[key].current;
-      section?.scrollIntoView({ block: "nearest" });
-      section?.querySelector<HTMLElement>("input:not(:disabled), select:not(:disabled), textarea:not(:disabled)")?.focus();
-    });
+    formSections.focus(key);
   }
-  useGraphShortcuts({
-    workspaceMode: annotationWorkspace.mode,
-    annotationGesture: annotationWorkspace.gestureActive,
-    annotationEditing: Boolean(annotationWorkspace.editor),
-    busy: layout.blocked || layout.isLocked(),
-    form: keyboardForm || Boolean(document.activeElement?.closest(
-      ".react-flow-edit-panel, [data-graph-create]")),
-    notice: () => setActionMessage("Finish or cancel the current operation first."),
-    fallback: event => groupKeyHandler.current(event),
-    run: action => {
-      if (action === "saveLayout") {
-        if (layout.dirty) void layout.save();
-      } else if (action === "createNode" || action === "createEdge") {
-        focusForm(action);
-      } else if (action === "cancelAnnotation") {
-        annotationWorkspace.cancel();
-      } else if (action === "deleteElement" && annotationMode) {
-        annotationWorkspace.requestDelete();
-      } else if (action === "deleteElement") {
-        const target = ordinaryDeleteIdentity(nodes, edges, Boolean(activeManualGroup || activeBranch), ordinaryTarget.current);
-        if (target) deletion.open(target);
-      }
-    },
-  });
+
 
   function handleSearchResult(result: GraphSearchResult) {
     if (annotationMode) return;
@@ -1834,6 +1813,45 @@ const handleNodesChange = useCallback(
     [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty, annotationMode],
   );
 
+  const formActive = keyboardForm || Boolean(document.activeElement?.closest(
+    ".react-flow-edit-panel, [data-graph-create]"));
+  const commands = useWorkspaceCommands({
+    annotationMode, blocked: layout.blocked, locked: layout.locked, dirty: layout.dirty, saveProtected: formActive || Boolean(annotationWorkspace.editor), ready: flowReady && layout.startupReady,
+  }, {
+    save: () => {
+      if (document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]') ||
+          keyboardForm || document.activeElement?.closest(".react-flow-edit-panel, [data-graph-create]") || annotationWorkspace.editor) {
+        setActionMessage("Finish or cancel the current operation first."); return;
+      }
+      return layout.save();
+    }, focusForm, arrange: name => runLayout(name), reset: () => resetHighlighting(),
+    fit: () => { void instanceRef.current?.fitView({ padding: 0.1, duration: 300 }); },
+  });
+
+  useGraphShortcuts({
+    workspaceMode: annotationWorkspace.mode,
+    annotationGesture: annotationWorkspace.gestureActive,
+    annotationEditing: Boolean(annotationWorkspace.editor),
+    busy: layout.blocked || layout.isLocked(),
+    form: formActive,
+    notice: () => setActionMessage("Finish or cancel the current operation first."),
+    fallback: event => groupKeyHandler.current(event),
+    run: action => {
+      if (action === "saveLayout") {
+        commands.save.run();
+      } else if (action === "createNode" || action === "createEdge") {
+        commands[action].run();
+      } else if (action === "cancelAnnotation") {
+        annotationWorkspace.cancel();
+      } else if (action === "deleteElement" && annotationMode) {
+        annotationWorkspace.requestDelete();
+      } else if (action === "deleteElement") {
+        const target = ordinaryDeleteIdentity(nodes, edges, Boolean(activeManualGroup || activeBranch), ordinaryTarget.current);
+        if (target) deletion.open(target);
+      }
+    },
+  });
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -2125,28 +2143,25 @@ const handleNodesChange = useCallback(
   }
 
 return (
+  <LayoutControls layout={layout} saveCommand={commands.save}>
+    {surface => <ApplicationShell bar={<ApplicationBar
+      layoutName={layout.active?.name ?? "Unsaved initial layout"} status={surface.status}
+      layoutItems={surface.items} save={commands.save} commands={commands}
+      workspace={annotationWorkspace} modeLocked={annotationLocked}
+      menuBlocked={surface.dialogOpen || Boolean(deleteState.target) || Boolean(annotationWorkspace.deleteTarget) ||
+        Boolean(annotationWorkspace.editor) || annotationWorkspace.gestureActive || Boolean(selectionRectangle) ||
+        nodes.some(node => node.dragging) || layout.phase === "recovery"}
+      toolsPanel={toolsPanel} formActive={formActive} exportDiagnostics={diagnosticsRef.current ? exportDiagnostics : undefined}
+    />}>
   <section className="react-flow-panel">
     <GraphDeleteDialog state={deleteState} onCancel={deletion.cancel}
       onConfirm={() => void deletion.confirm()} onRetry={() => void deletion.retryRefresh()} />
     <AnnotationDeleteDialog workspace={annotationWorkspace} locked={annotationLocked} />
-    <aside className="react-flow-sidebar">
-      <div className="react-flow-header">
-        <strong>My Way tools</strong>
-      </div>
-
-      <div className="react-flow-sidebar__content">
+    <ToolsPanel open={toolsPanel.open} mode={toolsPanel.mode} onClose={toolsPanel.hide}>
         <div className="react-flow-toolbar">
-        <LayoutControls layout={layout} onRefreshGraph={refreshGraphForLayout} />
+        <LayoutMessages layout={layout} onRefreshGraph={refreshGraphForLayout} />
         <AnnotationControls workspace={annotationWorkspace} locked={annotationLocked} />
-        {diagnosticsRef.current && (
-          <button
-            type="button"
-            onClick={exportDiagnostics}
-          >
-            Export diagnostics
-          </button>
-        )}
-        <fieldset className="graph-crud-controls" disabled={annotationMode || annotationBusy}>
+        <fieldset className="graph-crud-controls" hidden={annotationMode} disabled={annotationMode || annotationBusy}>
         <div data-graph-create ref={formSections.createNode}>
           <strong>Create Node</strong>
           <label>
@@ -2376,39 +2391,10 @@ return (
         </div>
 
         </fieldset>
-        <div>
-          <strong>Arrange nodes</strong>
-          <button type="button" disabled={annotationMode || layout.blocked} onClick={() => runLayout("grid")}>
-            Grid
-          </button>
 
-          <button type="button" disabled={annotationMode || layout.blocked} onClick={() => runLayout("circle")}>
-            Circle
-          </button>
-
-          <button type="button" disabled={annotationMode || layout.blocked} onClick={() => runLayout("dagre")}>
-            Dagre
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              void instanceRef.current?.fitView({
-                padding: 0.1,
-                duration: 300,
-              });
-            }}
-          >
-            Fit
-          </button>
-
-          <button type="button" disabled={annotationMode} onClick={resetHighlighting}>
-            Reset selection
-          </button>
-        </div>
       </div>
 
-      <div className="react-flow-product-controls">
+      <div className="react-flow-product-controls" hidden={annotationMode}>
         <fieldset className="graph-mode-controls" disabled={annotationMode}>
           <GraphSearchPanel graph={graphData} onSelect={handleSearchResult} />
         </fieldset>
@@ -2825,13 +2811,12 @@ return (
         )}
       </div>
 
-      </div>
-    </aside>
+    </ToolsPanel>
 
     <div className="react-flow-workspace">
 
 
-      <div className="react-flow-metrics">
+      {diagnosticsRef.current && <div className="react-flow-metrics">
         <span>Adapter: {metrics.adapterMs.toFixed(2)} ms</span>
 
         <span>Initialization: {metrics.initializationMs.toFixed(2)} ms</span>
@@ -2851,7 +2836,7 @@ return (
         </span>
 
         <span>Selected: {selectedElement}</span>
-      </div>
+      </div>}
 
       {!layout.startupReady ? (
         <div
@@ -2994,6 +2979,7 @@ return (
           onPaneClick={annotationMode ? undefined : resetHighlighting}
           onInit={(instance) => {
             instanceRef.current = instance;
+            setFlowReady(true);
           }}
           fitView
           fitViewOptions={{ padding: 0.1 }}
@@ -3045,5 +3031,7 @@ return (
 
 
     </section>
+    </ApplicationShell>}
+  </LayoutControls>
   );
 }

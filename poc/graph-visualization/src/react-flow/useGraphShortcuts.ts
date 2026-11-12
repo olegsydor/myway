@@ -9,6 +9,9 @@ export function useGraphShortcuts(context: Omit<ShortcutContext, "canvas" | "edi
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
+      // Capture runs before menu React handlers, including for Cmd/Ctrl+S.
+      if (target?.closest('[role="menubar"], [role="menu"]') ||
+          document.querySelector('[role="menubar"] [role="menu"]')) return;
       const modal = Boolean(document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]'));
       const canvas = Boolean(target?.closest(".react-flow-container"));
       const editable = isEditableTarget(event.target);
