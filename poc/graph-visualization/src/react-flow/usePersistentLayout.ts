@@ -1,3 +1,5 @@
+import { readActiveLayout, writeActiveLayout, removeActiveLayout } from "./workspacePreferences.ts";
+import { selectStartupLayout } from "./startupLayout.ts";
 import { annotationSnapshot, type Annotation } from "../shared/annotations.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createLayout, deleteLayout, fetchLayout, fetchLayouts, saveLayout, updateLayout } from "../shared/layoutApi.ts";
@@ -160,10 +162,13 @@ export function usePersistentLayout(options: Options) {
     void (async () => {
       try {
         const owned = await fetchLayouts(controller.signal);
-        const defaultLayout = owned.find((layout) => layout.is_default) ?? owned[0];
-        const layout = defaultLayout ? await fetchLayout(defaultLayout.id, controller.signal) : null;
-        if (!cancelled) setPending({ layouts: owned, layout, notice: defaultLayout && !defaultLayout.is_default
-          ? "No default layout was found; opened the oldest saved layout. Choose Set as default to use it on startup." : "" });
+        const scope = latest.current.recoveryScope;
+        const selection = selectStartupLayout(owned, readActiveLayout(scope));
+        const layout = selection.layout ? await fetchLayout(selection.layout.id, controller.signal) : null;
+        if (!cancelled) {
+          if (!layout && selection.stale) removeActiveLayout(scope);
+          setPending({ layouts: owned, layout, notice: selection.notice });
+        }
       } catch (cause) {
         if (!cancelled) {
           setError(cause instanceof Error ? cause.message : "Failed to load layouts");
@@ -239,6 +244,7 @@ useEffect(() => {
 
       latest.current.setAnnotations(annotationSnapshot(startup.layout.annotations));
       setActive(startup.layout);
+      writeActiveLayout(scope, startup.layout.id);
       setSaved({ positions, annotations: annotationSnapshot(startup.layout.annotations) });
       latest.current.onRestored();
     } else {
@@ -351,6 +357,7 @@ useEffect(() => {
   function acceptSnapshot(accepted: LayoutDetail) {
     remember(accepted);
     setActive(accepted);
+    writeActiveLayout(latest.current.recoveryScope, accepted.id);
     setSaved({ positions: accepted.positions, annotations: annotationSnapshot(accepted.annotations) });
     latest.current.setAnnotations(annotationSnapshot(accepted.annotations));
   }

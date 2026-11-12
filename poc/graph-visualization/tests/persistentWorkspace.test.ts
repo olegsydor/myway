@@ -1,3 +1,4 @@
+import { activeLayoutKey, readActiveLayout, writeActiveLayout } from "../src/react-flow/workspacePreferences.ts";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement, useLayoutEffect, useState } from "react";
@@ -76,6 +77,12 @@ const clean = () => ({ annotations: [text], x: 10, dirty: false, active: 1 });
 
 beforeEach(async () => {
   Object.assign(globalThis, { window: new EventTarget(), indexedDB: new IDBFactory(), IS_REACT_ACT_ENVIRONMENT: true });
+  Object.defineProperty(window, "localStorage", { value: (() => {
+    const values = new Map<string, string>();
+    return { getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key) };
+  })() });
   calls = [];
   failSave = failLoad = false;
   layouts = new Map([[1, { ...metadata(1, true), positions: [{ node_id: 1, x: 10, y: 0 }], annotations: [text] }],
@@ -445,4 +452,81 @@ test("failed Text Save preserves committed working content, recovery and accepte
   failSave = false;
   await run(() => current.discard());
   assert.deepEqual(state(), clean());
+});
+
+async function restartWith(id: number) {
+  await act(async () => root.unmount());
+  writeActiveLayout(scope, id);
+  calls = [];
+  await act(async () => { root = create(createElement(Harness)); });
+  await waitFor(() => ["ready", "recovery", "load-error"].includes(current.phase));
+}
+
+test("remembered startup fetches only the selected layout and accepts its identity", async () => {
+  await restartWith(2);
+  assert.equal(current.active?.id, 2);
+  assert.equal(current.nodes[0].position.x, 20);
+  assert.equal(calls.some((call) => call.path === "/api/layouts/1"), false);
+  assert.equal(readActiveLayout(scope), 2);
+});
+
+test("stale startup falls back safely and clears preference when no layouts exist", async () => {
+  await restartWith(99);
+  assert.equal(current.active?.id, 1);
+  assert.match(current.notice, /unavailable/);
+  assert.equal(readActiveLayout(scope), 1);
+  layouts.clear();
+  await restartWith(99);
+  assert.equal(current.active, null);
+  assert.equal(readActiveLayout(scope), null);
+});
+
+test("remembered detail failure retains preference and Retry reevaluates startup", async () => {
+  failLoad = true;
+  await restartWith(2);
+  assert.equal(current.phase, "load-error");
+  assert.equal(current.startupReady, false);
+  assert.equal(readActiveLayout(scope), 2);
+  failLoad = false;
+  await run(() => current.retry());
+  await waitFor(() => current.phase === "ready");
+  assert.equal(current.active?.id, 2);
+});
+
+test("accepted transitions remember identity while canceled and failed switches do not", async () => {
+  assert.equal(readActiveLayout(scope), 1);
+  await run(() => current.switchTo(2, "cancel"));
+  failLoad = true;
+  await run(() => current.switchTo(2, "discard"));
+  assert.equal(readActiveLayout(scope), 1);
+  failLoad = false;
+  await run(() => current.switchTo(2, "discard"));
+  assert.equal(readActiveLayout(scope), 2);
+  await run(() => current.saveAsNew("Copy"));
+  assert.equal(readActiveLayout(scope), 3);
+  await run(() => current.deleteActive());
+  assert.equal(readActiveLayout(scope), 1);
+});
+
+test("remembered B offers only B recovery and preserves identity after Restore", async () => {
+  const baseline = layouts.get(2)!;
+  await writeLayoutRecovery(createRecoveryRecord(scope, 2,
+    [{ ...initialNodes[0], position: { x: 88, y: 0 } }], baseline.positions,
+    new Date().toISOString(), [text], baseline.annotations));
+  await restartWith(2);
+  assert.equal(current.phase, "recovery");
+  assert.equal(current.startupReady, false);
+  assert.equal(current.recoveryOffer?.layoutId, 2);
+  await run(() => current.restoreRecovery());
+  assert.equal(current.nodes[0].position.x, 88);
+  assert.equal(current.dirty, true);
+  assert.equal(readActiveLayout(scope), 2);
+});
+
+test("blocked preference writes do not turn accepted Save into failure", async () => {
+  window.localStorage.setItem = () => { throw new Error("quota"); };
+  await run(() => current.move(77));
+  assert.equal(await run(() => current.save()), true);
+  assert.equal(current.dirty, false);
+  assert.ok(activeLayoutKey(scope));
 });
