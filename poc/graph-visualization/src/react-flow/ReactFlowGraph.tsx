@@ -1,3 +1,4 @@
+import { useWorkspaceTitle } from "./useWorkspaceTitle";
 import { useLayoutViewport } from "./useLayoutViewport";
 import { ToolsPanel } from "../shell/ToolsPanel";
 import { useToolsPanel } from "../shell/useToolsPanel";
@@ -319,6 +320,8 @@ useEffect(() => {
   const camera = useLayoutViewport({ scope: recoveryScope, id: layout.active?.id ?? null,
     startupReady: layout.startupReady, flowReady, transition: layout.cameraTransition, instance: instanceRef });
 
+  useWorkspaceTitle(layout.active?.name ?? null, layout.dirty,
+    layout.startupReady && layout.phase !== "load-error");
   const fitCamera = camera.fit;
 
   function exportDiagnostics() {

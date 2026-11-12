@@ -1,3 +1,4 @@
+import { useWorkspaceTitle } from "../src/react-flow/useWorkspaceTitle.ts";
 import { activeLayoutKey, readActiveLayout, writeActiveLayout } from "../src/react-flow/workspacePreferences.ts";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
@@ -18,6 +19,7 @@ const metadata = (id: number, is_default: boolean) => ({ id, name: `Layout ${id}
   created_at: "2026-10-27T00:00:00Z", updated_at: "2026-10-27T00:00:00Z" });
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
+const originalDocument = globalThis.document;
 const originalIndexedDB = globalThis.indexedDB;
 let current: ReturnType<typeof usePersistentLayout> & {
   nodes: ReactFlowNode[]; annotations: Annotation[];
@@ -44,6 +46,7 @@ function Harness() {
     recoveryScope: scope, fallback: () => initialNodes,
     onRestored() {}, onSwitched() { workspace.reset(); },
   });
+  useWorkspaceTitle(layout.active?.name ?? null, layout.dirty, layout.startupReady && layout.phase !== "load-error");
   const workspace = useAnnotationWorkspace({
     annotations, setAnnotations, locked: layout.locked || graphBusy,
     toGraph: (point) => point, onBusy: setGestureBusy, onEnterAnnotation() {},
@@ -76,7 +79,7 @@ const state = () => ({ annotations: current.annotations, x: current.nodes[0].pos
 const clean = () => ({ annotations: [text], x: 10, dirty: false, active: 1 });
 
 beforeEach(async () => {
-  Object.assign(globalThis, { window: new EventTarget(), indexedDB: new IDBFactory(), IS_REACT_ACT_ENVIRONMENT: true });
+  Object.assign(globalThis, { window: new EventTarget(), document: { title: "My Way" }, indexedDB: new IDBFactory(), IS_REACT_ACT_ENVIRONMENT: true });
   Object.defineProperty(window, "localStorage", { value: (() => {
     const values = new Map<string, string>();
     return { getItem: (key: string) => values.get(key) ?? null,
@@ -109,6 +112,12 @@ beforeEach(async () => {
       layouts.set(newId, accepted);
       return response(accepted, 201);
     }
+    if (method === "PATCH") {
+      const accepted = { ...layouts.get(id)!, ...body };
+      if (body.is_default) for (const layout of layouts.values()) layout.is_default = false;
+      layouts.set(id, accepted);
+      return response(accepted);
+    }
     if (method === "DELETE") { layouts.delete(id); return new Response(null, { status: 204 }); }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -116,7 +125,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
-  Object.assign(globalThis, { fetch: originalFetch, window: originalWindow, indexedDB: originalIndexedDB });
+  Object.assign(globalThis, { fetch: originalFetch, window: originalWindow, document: originalDocument, indexedDB: originalIndexedDB });
 });
 
 test("startup applies server positions and annotations before revealing the workspace", () => {
@@ -548,4 +557,55 @@ test("camera transition distinguishes workspace destinations from new identity a
   assert.equal(current.cameraTransition, created);
   await run(() => current.deleteActive());
   assert.equal(current.cameraTransition.preserve, false);
+});
+
+
+test("tab title follows accepted workspace Save, failure, Rename, switch and delete", async () => {
+  assert.equal(document.title, "My Way — Layout 1");
+  await run(() => current.move(31));
+  assert.equal(document.title, "My Way — Layout 1 *");
+  failSave = true;
+  await run(() => current.save());
+  assert.equal(document.title, "My Way — Layout 1 *");
+  failSave = false;
+  await run(() => current.save());
+  assert.equal(document.title, "My Way — Layout 1");
+  await run(() => current.rename("<b>Personal & Work</b>"));
+  assert.equal(document.title, "My Way — <b>Personal & Work</b>");
+  failLoad = true;
+  await run(() => current.switchTo(2, "discard"));
+  assert.equal(document.title, "My Way — <b>Personal & Work</b>");
+  failLoad = false;
+  await run(() => current.switchTo(2, "discard"));
+  assert.equal(document.title, "My Way — Layout 2");
+  await run(() => current.deleteActive());
+  assert.equal(document.title, "My Way — <b>Personal & Work</b>");
+});
+
+test("tab title stays base through recovery, marks Restore and resets on unmount", async () => {
+  const baseline = layouts.get(2)!;
+  await writeLayoutRecovery(createRecoveryRecord(scope, 2,
+    [{ ...initialNodes[0], position: { x: 81, y: 0 } }], baseline.positions,
+    new Date().toISOString(), [text], baseline.annotations));
+  await restartWith(2);
+  assert.equal(document.title, "My Way");
+  await run(() => current.restoreRecovery());
+  assert.equal(document.title, "My Way — Layout 2 *");
+  await act(async () => root.unmount());
+  assert.equal(document.title, "My Way");
+});
+
+test("recovery Discard gives clean title and no layouts gives unsaved title", async () => {
+  const baseline = layouts.get(2)!;
+  await writeLayoutRecovery(createRecoveryRecord(scope, 2,
+    [{ ...initialNodes[0], position: { x: 81, y: 0 } }], baseline.positions,
+    new Date().toISOString(), [text], baseline.annotations));
+  await restartWith(2);
+  await run(() => current.discardRecovery());
+  assert.equal(document.title, "My Way — Layout 2");
+  layouts.clear();
+  await restartWith(99);
+  assert.equal(document.title, "My Way — Unsaved layout *");
+  await run(() => current.save());
+  assert.equal(document.title, "My Way — Main");
 });
