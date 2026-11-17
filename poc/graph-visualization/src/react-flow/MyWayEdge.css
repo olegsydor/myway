@@ -8,10 +8,11 @@
   min-width: 200px;
   max-width: 320px;
   padding: 10px 12px;
-  color: #111827;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border: 1px solid var(--mw-border);
+  border-radius: var(--mw-radius-surface);
+  box-shadow: var(--mw-shadow);
   font-size: 12px;
   line-height: 1.4;
   text-align: left;

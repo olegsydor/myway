@@ -45,6 +45,60 @@ function pointer(x: number, y: number, id = 1, button = 0): AnnotationPointer & 
 async function run(action: () => unknown) { let result: unknown; await act(async () => { result = action(); }); return result; }
 async function selectRectangle() { await run(() => current.begin(pointer(120, 90), rectangle.id)); await run(() => current.end(pointer(120, 90))); }
 
+test("Alt-click cycles rendered overlaps without reordering or dirtying the workspace; ordinary click still picks the top", async () => {
+  await run(() => current.switchMode("annotation"));
+  const hitIds = [text.id, text.id, 'stale-id', rectangle.id];
+  for (const expected of [rectangle.id, text.id, rectangle.id]) {
+    const down = { ...pointer(120, 90), altKey: true };
+    await run(() => current.begin(down, text.id, undefined, hitIds));
+    assert.equal(current.selectedId, expected);
+    await run(() => current.end(pointer(120, 90)));
+    assert.equal(workspaceIsDirty([], annotations, baseline), false);
+    assert.deepEqual(annotations, baseline.annotations);
+    assert.equal(capture.size, 0);
+  }
+  await run(() => current.begin(pointer(120, 90), text.id, undefined, hitIds));
+  await run(() => current.end(pointer(120, 90)));
+  assert.equal(current.selectedId, text.id);
+});
+
+test("Alt-drag moves the annotation chosen underneath, including when the upper target is a resize handle", async () => {
+  await run(() => current.switchMode("annotation"));
+  const down = { ...pointer(120, 90), altKey: true };
+  await run(() => current.begin(down, text.id, 'se', [text.id, rectangle.id]));
+  assert.equal(current.selectedId, rectangle.id);
+  await run(() => current.move(pointer(160, 110)));
+  await run(() => current.end(pointer(160, 110)));
+  assert.deepEqual(annotations[0], { ...rectangle, x: rectangle.x + 20, y: rectangle.y + 10 });
+  assert.deepEqual(annotations[1], text);
+  assert.equal(workspaceIsDirty([], annotations, baseline), true);
+});
+
+test("overlap cycling retains graph-mode, lock, and mouse-button guards", async () => {
+  const alt = { ...pointer(120, 90), altKey: true };
+  assert.equal(await run(() => current.begin(alt, text.id, undefined, [text.id, rectangle.id])), false);
+  await run(() => current.switchMode("annotation"));
+  await run(() => updateLocked(true));
+  assert.equal(await run(() => current.begin(alt, text.id, undefined, [text.id, rectangle.id])), false);
+  await run(() => updateLocked(false));
+  assert.equal(await run(() => current.begin({ ...alt, button: 2 }, text.id, undefined, [text.id, rectangle.id])), false);
+  assert.equal(current.selectedId, null);
+  assert.equal(busy, false);
+  assert.deepEqual(annotations, baseline.annotations);
+});
+
+test("a single overlap remains selectable and Alt does not cycle in Rectangle drawing mode", async () => {
+  await run(() => current.switchMode("annotation"));
+  await run(() => current.begin({ ...pointer(120, 90), altKey: true }, rectangle.id, undefined, [rectangle.id]));
+  await run(() => current.end(pointer(120, 90)));
+  assert.equal(current.selectedId, rectangle.id);
+  await run(() => current.setActiveTool("rectangle"));
+  await run(() => current.begin({ ...pointer(100, 50), altKey: true }, text.id, undefined, [text.id, rectangle.id]));
+  await run(() => current.end(pointer(300, 250)));
+  assert.equal(annotations.length, 3);
+  assert.deepEqual(annotations.slice(0, 2), baseline.annotations);
+});
+
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   capture = new Set(); entered = 0;

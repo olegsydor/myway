@@ -7,6 +7,7 @@ export const SHORTCUT_HELP = [
   ['Arrow / Shift+Arrow', 'Move an active branch or manual group'],
   ['Ctrl/Cmd+click', 'Toggle a node in a manual group'],
   ['Shift-drag', 'Select a manual group with a rectangle'],
+  ['Alt/Option+click', 'Cycle overlapping annotations in Annotation Select mode'],
   ['Tab / Shift+Tab', 'Enter or leave the application menubar'],
   ['Left / Right', 'Move between application menus; open or leave a submenu'],
   ['Enter / Space / ArrowDown', 'Open a menu; Enter or Space invokes an item'],

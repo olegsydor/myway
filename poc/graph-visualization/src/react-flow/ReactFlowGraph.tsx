@@ -1,3 +1,4 @@
+import { GRAPH_APPEARANCE } from "./graphAppearance.ts";
 import { useWorkspaceTitle } from "./useWorkspaceTitle";
 import { useLayoutViewport } from "./useLayoutViewport";
 import { ToolsPanel } from "../shell/ToolsPanel";
@@ -815,10 +816,10 @@ const handleNodesChange = useCallback(
             ...node.style,
             opacity: isMember ? 1 : 0.2,
             border: isAnchor
-              ? "4px solid #ef4444"
+              ? `4px solid ${GRAPH_APPEARANCE.emphasis}`
               : isMember
-                ? "3px solid #f59e0b"
-                : "2px solid #ffffff",
+                ? `3px solid ${GRAPH_APPEARANCE.endpoint}`
+                : `2px solid ${GRAPH_APPEARANCE.border}`,
           },
         };
       })
@@ -832,10 +833,10 @@ const handleNodesChange = useCallback(
               ...node.style,
               opacity: 1,
               border: isMember
-                ? "3px solid #22c55e"
-                : "2px solid #ffffff",
+                ? `3px solid ${GRAPH_APPEARANCE.group}`
+                : `2px solid ${GRAPH_APPEARANCE.border}`,
               boxShadow: isMember
-                ? "0 0 0 2px rgba(34, 197, 94, 0.25)"
+                ? GRAPH_APPEARANCE.groupShadow
                 : "none",
             },
           };
@@ -994,7 +995,7 @@ const handleNodesChange = useCallback(
         style: {
           ...node.style,
           opacity: 1,
-          border: "2px solid #ffffff",
+          border: `2px solid ${GRAPH_APPEARANCE.border}`,
         },
       })),
     );
@@ -1007,14 +1008,14 @@ const handleNodesChange = useCallback(
         style: {
           ...edge.style,
           opacity: 1,
-          stroke: "#94a3b8",
-          strokeWidth: 2,
+          stroke: GRAPH_APPEARANCE.edge,
+          strokeWidth: GRAPH_APPEARANCE.edgeWidth,
         },
         markerEnd:
           typeof edge.markerEnd === "object"
             ? {
                 ...edge.markerEnd,
-                color: "#94a3b8",
+                color: GRAPH_APPEARANCE.edge,
               }
             : edge.markerEnd,
       })),
@@ -1082,7 +1083,7 @@ const handleNodesChange = useCallback(
             style: {
               ...node.style,
               opacity: highlighted ? 1 : 0.12,
-              border: highlighted ? "3px solid #ef4444" : "2px solid #ffffff",
+              border: highlighted ? `3px solid ${GRAPH_APPEARANCE.emphasis}` : `2px solid ${GRAPH_APPEARANCE.border}`,
             },
           };
         }),
@@ -1098,14 +1099,14 @@ const handleNodesChange = useCallback(
             style: {
               ...edge.style,
               opacity: highlighted ? 1 : 0.1,
-              stroke: highlighted ? "#ef4444" : "#cbd5e1",
-              strokeWidth: highlighted ? 4 : 1,
+              stroke: highlighted ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
+              strokeWidth: highlighted ? GRAPH_APPEARANCE.edgeEmphasisWidth : 1,
             },
             markerEnd:
               typeof edge.markerEnd === "object"
                 ? {
                     ...edge.markerEnd,
-                    color: highlighted ? "#ef4444" : "#cbd5e1",
+                    color: highlighted ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
                   }
                 : edge.markerEnd,
           };
@@ -1187,7 +1188,7 @@ const handleNodesChange = useCallback(
             style: {
               ...node.style,
               opacity: highlighted ? 1 : 0.12,
-              border: highlighted ? "3px solid #ef4444" : "2px solid #ffffff",
+              border: highlighted ? `3px solid ${GRAPH_APPEARANCE.emphasis}` : `2px solid ${GRAPH_APPEARANCE.border}`,
             },
           };
         }),
@@ -1203,14 +1204,14 @@ const handleNodesChange = useCallback(
             style: {
               ...edge.style,
               opacity: highlighted ? 1 : 0.1,
-              stroke: highlighted ? "#ef4444" : "#cbd5e1",
-              strokeWidth: highlighted ? 4 : 1,
+              stroke: highlighted ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
+              strokeWidth: highlighted ? GRAPH_APPEARANCE.edgeEmphasisWidth : 1,
             },
             markerEnd:
               typeof edge.markerEnd === "object"
                 ? {
                     ...edge.markerEnd,
-                    color: highlighted ? "#ef4444" : "#cbd5e1",
+                    color: highlighted ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
                   }
                 : edge.markerEnd,
           };
@@ -1286,10 +1287,10 @@ const handleNodesChange = useCallback(
             ...node.style,
             opacity: 1,
             border: isSelectedNode
-              ? "3px solid #ef4444"
+              ? `3px solid ${GRAPH_APPEARANCE.emphasis}`
               : isEndpoint
-                ? "3px solid #f59e0b"
-                : "2px solid #ffffff",
+                ? `3px solid ${GRAPH_APPEARANCE.endpoint}`
+                : `2px solid ${GRAPH_APPEARANCE.border}`,
           },
         };
       }),
@@ -1306,14 +1307,14 @@ const handleNodesChange = useCallback(
           style: {
             ...edge.style,
             opacity: 1,
-            stroke: isSelectedEdge ? "#ef4444" : "#94a3b8",
-            strokeWidth: isSelectedEdge ? 4 : 2,
+            stroke: isSelectedEdge ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edge,
+            strokeWidth: isSelectedEdge ? GRAPH_APPEARANCE.edgeEmphasisWidth : GRAPH_APPEARANCE.edgeWidth,
           },
           markerEnd:
             typeof edge.markerEnd === "object"
               ? {
                   ...edge.markerEnd,
-                  color: isSelectedEdge ? "#ef4444" : "#94a3b8",
+                  color: isSelectedEdge ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edge,
                 }
               : edge.markerEnd,
         };
@@ -1372,7 +1373,7 @@ const handleNodesChange = useCallback(
         style: {
           ...node.style,
           opacity: 1,
-          border: "2px solid #ffffff",
+          border: `2px solid ${GRAPH_APPEARANCE.border}`,
         },
       })),
     );
@@ -1392,14 +1393,14 @@ const handleNodesChange = useCallback(
           style: {
             ...edge.style,
             opacity: 1,
-            stroke: "#94a3b8",
-            strokeWidth: 2,
+            stroke: GRAPH_APPEARANCE.edge,
+            strokeWidth: GRAPH_APPEARANCE.edgeWidth,
           },
           markerEnd:
             typeof edge.markerEnd === "object"
               ? {
                   ...edge.markerEnd,
-                  color: "#94a3b8",
+                  color: GRAPH_APPEARANCE.edge,
                 }
               : edge.markerEnd,
         };
@@ -1530,8 +1531,8 @@ const handleNodesChange = useCallback(
             ...node.style,
             opacity: isFreeNode ? 1 : 0.08,
             border: isFreeNode
-              ? "4px solid #16a34a"
-              : "2px solid #ffffff",
+              ? `4px solid ${GRAPH_APPEARANCE.group}`
+              : `2px solid ${GRAPH_APPEARANCE.border}`,
           },
         };
       }),
@@ -1545,14 +1546,14 @@ const handleNodesChange = useCallback(
         style: {
           ...edge.style,
           opacity: 0.08,
-          stroke: "#cbd5e1",
+          stroke: GRAPH_APPEARANCE.edgeMuted,
           strokeWidth: 1,
         },
         markerEnd:
           typeof edge.markerEnd === "object"
             ? {
                 ...edge.markerEnd,
-                color: "#cbd5e1",
+                color: GRAPH_APPEARANCE.edgeMuted,
               }
             : edge.markerEnd,
       })),
@@ -1613,18 +1614,18 @@ const handleNodesChange = useCallback(
         const isSelectedNode = node.id === selectedFlowNodeId;
         const isRootNode = rootNodeIds.has(node.id);
 
-        let border = "2px solid #ffffff";
+        let border = `2px solid ${GRAPH_APPEARANCE.border}`;
 
         if (isInPath) {
-          border = "3px solid #f59e0b";
+          border = `3px solid ${GRAPH_APPEARANCE.endpoint}`;
         }
 
         if (isRootNode) {
-          border = "3px solid #16a34a";
+          border = `3px solid ${GRAPH_APPEARANCE.group}`;
         }
 
         if (isSelectedNode) {
-          border = "4px solid #ef4444";
+          border = `4px solid ${GRAPH_APPEARANCE.emphasis}`;
         }
 
         return {
@@ -1651,14 +1652,14 @@ const handleNodesChange = useCallback(
           style: {
             ...edge.style,
             opacity: isInPath ? 1 : 0.08,
-            stroke: isInPath ? "#ef4444" : "#cbd5e1",
-            strokeWidth: isInPath ? 4 : 1,
+            stroke: isInPath ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
+            strokeWidth: isInPath ? GRAPH_APPEARANCE.edgeEmphasisWidth : 1,
           },
           markerEnd:
             typeof edge.markerEnd === "object"
               ? {
                   ...edge.markerEnd,
-                  color: isInPath ? "#ef4444" : "#cbd5e1",
+                  color: isInPath ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
                 }
               : edge.markerEnd,
         };
@@ -1737,7 +1738,7 @@ const handleNodesChange = useCallback(
           style: {
             ...node.style,
             opacity: highlighted ? 1 : 0.08,
-            border: highlighted ? "3px solid #ef4444" : "2px solid #ffffff",
+            border: highlighted ? `3px solid ${GRAPH_APPEARANCE.emphasis}` : `2px solid ${GRAPH_APPEARANCE.border}`,
           },
         };
       }),
@@ -1754,14 +1755,14 @@ const handleNodesChange = useCallback(
           style: {
             ...edge.style,
             opacity: highlighted ? 1 : 0.06,
-            stroke: highlighted ? "#ef4444" : "#cbd5e1",
-            strokeWidth: highlighted ? 4 : 1,
+            stroke: highlighted ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
+            strokeWidth: highlighted ? GRAPH_APPEARANCE.edgeEmphasisWidth : 1,
           },
           markerEnd:
             typeof edge.markerEnd === "object"
               ? {
                   ...edge.markerEnd,
-                  color: highlighted ? "#ef4444" : "#cbd5e1",
+                  color: highlighted ? GRAPH_APPEARANCE.emphasis : GRAPH_APPEARANCE.edgeMuted,
                 }
               : edge.markerEnd,
         };
@@ -2269,7 +2270,7 @@ return (
             </button>
           </div>
 
-          <button
+          <button className="mw-action-primary"
             type="button"
             onClick={() => void handleCreateNode()}
             disabled={layout.locked || isCreatingNode || availableNodeTypes.length === 0}
@@ -2382,7 +2383,7 @@ return (
             </button>
           </div>
 
-          <button
+          <button className="mw-action-primary"
             type="button"
             onClick={() => void handleCreateEdge()}
             disabled={
@@ -2674,7 +2675,7 @@ return (
               >
                 Add property
               </button>
-              <button
+              <button className="mw-action-primary"
                 type="button"
                 onClick={() => void handleUpdateNode()}
                 disabled={layout.locked || isUpdatingNode || isDeletingNode}
@@ -2682,7 +2683,7 @@ return (
                 {isUpdatingNode ? "Saving..." : "Save Node"}
               </button>
 
-              <button
+              <button className="mw-action-danger"
                 type="button"
                 onClick={() => void handleDeleteNode()}
                 disabled={layout.locked || isUpdatingNode || isDeletingNode}
@@ -2796,7 +2797,7 @@ return (
                 Add property
               </button>
 
-              <button
+              <button className="mw-action-primary"
                 type="button"
                 onClick={() => void handleUpdateEdge()}
                 disabled={layout.locked || isUpdatingEdge || isDeletingEdge}
@@ -2804,7 +2805,7 @@ return (
                 {isUpdatingEdge ? "Saving..." : "Save Edge"}
               </button>
 
-              <button
+              <button className="mw-action-danger"
                 type="button"
                 onClick={() => void handleDeleteEdge()}
                 disabled={layout.locked || isUpdatingEdge || isDeletingEdge}
@@ -2875,7 +2876,7 @@ return (
                 justifyContent: "center",
               }}
             >
-              <button
+              <button className="mw-action-primary"
                 type="button"
                 disabled={layout.recoveryBusy}
                 onClick={layout.restoreRecovery}
@@ -2919,12 +2920,21 @@ return (
           if (annotationMode) {
             if (target?.closest(".react-flow__controls, .react-flow__panel, button, input, textarea, select, a")) return;
             const hit = target?.closest<HTMLElement>("[data-annotation-id]");
-            annotationWorkspace.begin(event, hit?.dataset.annotationId, hit?.dataset.annotationResize as ResizeHandle | undefined);
+            const hitIds = event.altKey && annotationWorkspace.tool === "select"
+              ? document.elementsFromPoint(event.clientX, event.clientY)
+                .map(element => element.closest<HTMLElement>("[data-annotation-id]")?.dataset.annotationId)
+                .filter((id): id is string => Boolean(id))
+              : undefined;
+            annotationWorkspace.begin(event, hit?.dataset.annotationId, hit?.dataset.annotationResize as ResizeHandle | undefined, hitIds);
             return;
           }
           handleRectanglePointerDown(event);
         }}
         onDoubleClickCapture={(event) => {
+          // Rapid Alt-clicks cycle overlaps; they must not enter a Text editor.
+          if (annotationMode && event.altKey) {
+            event.preventDefault(); event.stopPropagation(); return;
+          }
           // Captured pointer-up events can retarget a double-click to the canvas.
           if (annotationMode && annotationWorkspace.selected?.kind === "text" &&
               !(event.target instanceof Element && event.target.closest("[data-annotation-editor]"))) {
@@ -3021,8 +3031,8 @@ return (
               height: Math.abs(
                 selectionRectangle.endY - selectionRectangle.startY,
               ),
-              border: "1px solid #22c55e",
-              background: "rgba(34, 197, 94, 0.12)",
+              border: `1px solid ${GRAPH_APPEARANCE.group}`,
+              background: GRAPH_APPEARANCE.groupFill,
               pointerEvents: "none",
               zIndex: 1000,
             }}

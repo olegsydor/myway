@@ -20,7 +20,7 @@ export function AnnotationControls({ workspace, locked }: { workspace: Annotatio
       </div>
       <small>{workspace.editor ? "Enter adds a line break. Click outside to finish; Escape cancels." : workspace.tool === "rectangle"
         ? "Drag to draw a rectangle. Escape cancels." : workspace.tool === "text" ? "Click to place text. Escape cancels."
-        : "Select an annotation to move or style it. Double-click text to edit. Drag empty canvas to pan."}</small>
+        : "Select an annotation to move or style it. Alt/Option + click cycles overlapping annotations. Double-click text to edit. Drag empty canvas to pan."}</small>
       {rectangle && <fieldset disabled={propertiesLocked} className="annotation-properties">
         <legend>Rectangle</legend>
         <label>Color<select aria-label="Rectangle color" value={rectangle.color}
@@ -71,7 +71,7 @@ export function AnnotationDeleteDialog({ workspace, locked }: { workspace: Annot
       : "Remove this rectangle from the layout?"} Save layout to keep the change.</p>
     <div className="layout-dialog-actions">
       <button ref={cancelRef} type="button" disabled={locked} onClick={workspace.cancelDelete}>Cancel</button>
-      <button type="button" disabled={locked} onClick={workspace.confirmDelete}>Delete</button>
+      <button className="mw-action-danger" type="button" disabled={locked} onClick={workspace.confirmDelete}>Delete</button>
     </div>
   </dialog>;
 }

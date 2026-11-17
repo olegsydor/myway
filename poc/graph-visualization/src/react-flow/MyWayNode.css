@@ -3,17 +3,36 @@
   width: 100%;
 }
 
-.my-way-node__label {
+.my-way-node__label-metric {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.my-way-node__metrics { visibility: hidden; pointer-events: none; }
+
+.my-way-node__label {
+  font-weight: 500;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.1;
+  max-height: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .my-way-node__type {
   margin-top: 4px;
   font-size: 11px;
-  opacity: 0.75;
+  color: var(--mw-secondary);
 }
 
 .my-way-node__tooltip {
@@ -28,11 +47,12 @@
 
   padding: 10px 12px;
 
-  color: #111827;
-  background: #ffffff;
+  color: var(--mw-text);
+  background: var(--mw-panel);
 
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border: 1px solid var(--mw-border);
+  border-radius: var(--mw-radius-surface);
+  box-shadow: var(--mw-shadow);
 
   font-size: 12px;
   line-height: 1.4;
@@ -42,9 +62,8 @@
   visibility: hidden;
   pointer-events: none;
 
-  transition:
-    opacity 120ms ease,
-    visibility 120ms ease;
+  /* Leaving a node or starting a drag cancels the reveal immediately. */
+  transition: none;
 
   .my-way-node__tooltip--right {
     left: calc(100% + 12px);
@@ -55,10 +74,19 @@
   }
 }
 
-.my-way-node:hover .my-way-node__tooltip {
+/* Pointer focus after a click must not keep a tooltip open. Selected nodes
+   already expose their details in the edit panel. Keyboard-only focus still works. */
+.react-flow__node:not(.dragging):not(.selected) .my-way-node:hover .my-way-node__tooltip,
+.react-flow__node:not(.dragging):not(.selected):focus-visible .my-way-node__tooltip {
   opacity: 1;
   visibility: visible;
+  /* Re-entering hover/focus after a drag starts a fresh one-second delay. */
+  transition: opacity 120ms ease 1s, visibility 0s linear 1s;
 }
+
+.my-way-node__tooltip-title { font-weight: 600; overflow-wrap: anywhere; }
+.my-way-node__tooltip-type { margin: 3px 0 8px; color: var(--mw-secondary); }
+.my-way-node__tooltip { overflow-wrap: anywhere; }
 
 .my-way-node__description {
   margin-bottom: 8px;
@@ -69,9 +97,24 @@
   gap: 3px;
 }
 
-.react-flow__node:hover {
+.react-flow__node:hover,
+.react-flow__node:focus-within {
   z-index: 1000 !important;
 }
+
+.react-flow-container {
+  --xy-background-color: var(--mw-canvas);
+  --xy-background-pattern-color: #c6d1df;
+  --xy-controls-button-background-color: var(--mw-panel);
+  --xy-controls-button-background-color-hover: var(--mw-subtle);
+  --xy-controls-button-color: var(--mw-text);
+  --xy-controls-button-border-color: var(--mw-border);
+  --xy-controls-box-shadow: var(--mw-shadow);
+  background: var(--mw-canvas);
+}
+
+.react-flow-container .react-flow__controls { border-radius: var(--mw-radius-control); overflow: hidden; }
+.react-flow-container .react-flow__handle { background: #728398; border-color: var(--mw-panel); }
 
 .my-way-node__tooltip--right {
   left: calc(100% + 12px);
@@ -79,4 +122,13 @@
 
 .my-way-node__tooltip--left {
   right: calc(100% + 12px);
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node:not(.dragging):not(.selected) .my-way-node:hover .my-way-node__tooltip,
+  .react-flow__node:not(.dragging):not(.selected):focus-visible .my-way-node__tooltip {
+    /* Preserve the deliberate hover delay, but reveal without a fade. */
+    transition: opacity 0s linear 1s, visibility 0s linear 1s;
+  }
 }

@@ -1,3 +1,4 @@
+import { useSearchResultNavigation } from "./useSearchResultNavigation.ts";
 import { useMemo, useState } from "react";
 
 import {
@@ -24,10 +25,15 @@ export function GraphSearchPanel({
     [graph, submittedQuery],
   );
 
+  const [open, setOpen] = useState(false);
+  const { input: searchInput, buttons: resultButtons, inputKey, resultKey } = useSearchResultNavigation({ open, count: results.length,
+    onOpen: () => setOpen(true), onClose: () => setOpen(false) });
+
   const hasSearched = submittedQuery.length > 0;
 
   function handleSearch() {
     setSubmittedQuery(query.trim());
+    setOpen(Boolean(query.trim()));
   }
 
   return (
@@ -35,6 +41,7 @@ export function GraphSearchPanel({
       <label htmlFor="react-flow-graph-search">Search graph</label>
 
       <input
+        ref={searchInput}
         id="react-flow-graph-search"
         type="search"
         value={query}
@@ -46,10 +53,12 @@ export function GraphSearchPanel({
 
           if (!nextQuery.trim()) {
             setSubmittedQuery("");
+            setOpen(false);
           }
         }}
         onKeyDown={(event) => {
-          if (event.key === "Enter") {
+          inputKey(event);
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
             event.preventDefault();
             handleSearch();
           }
@@ -60,7 +69,7 @@ export function GraphSearchPanel({
         Search
       </button>
 
-      {hasSearched && (
+      {hasSearched && open && (
         <div className="graph-search__results">
           <div className="graph-search__summary">
             {results.length === 0
@@ -68,9 +77,11 @@ export function GraphSearchPanel({
               : `${results.length} result${results.length === 1 ? "" : "s"}`}
           </div>
 
-          {results.map((result) => (
+          {results.map((result, index) => (
             <button
               key={`${result.kind}-${result.id}`}
+              ref={element => { resultButtons.current[index] = element; }}
+              onKeyDown={event => resultKey(event, index)}
               type="button"
               className="graph-search__result"
               onClick={() => {

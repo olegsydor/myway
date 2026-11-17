@@ -15,10 +15,6 @@ export function MyWayNode({
 }: NodeProps<ReactFlowNode>) {
   const attributes = Object.entries(data.attributes)
 
-  const hasDetails =
-    Boolean(data.description) ||
-    attributes.length > 0
-
   const nodeRef = useRef<HTMLDivElement>(null)
 const [tooltipSide, setTooltipSide] = useState<'left' | 'right'>('right')
 
@@ -50,24 +46,29 @@ function handleMouseEnter() {
       ref={nodeRef}
       className="my-way-node"
       onMouseEnter={handleMouseEnter}
+      onFocusCapture={handleMouseEnter}
     >
       <Handle
         type="target"
         position={Position.Left}
       />
 
-      <strong className="my-way-node__label">
+      {/* Retain the old one-line label/type metrics without displaying them.
+          The two-line title overlays that space, preserving node/handle geometry. */}
+      <div className="my-way-node__metrics" aria-hidden="true">
+        <strong className="my-way-node__label-metric">&nbsp;</strong>
+        <div className="my-way-node__type">&nbsp;</div>
+      </div>
+
+      <strong className="my-way-node__label" aria-label={`${data.label} (${data.nodeType})`}>
         {data.label}
       </strong>
 
-      <div className="my-way-node__type">
-        {data.nodeType}
-      </div>
-
-      {hasDetails && (
         <div
           className={`my-way-node__tooltip my-way-node__tooltip--${tooltipSide}`}
         >
+          <div className="my-way-node__tooltip-title">{data.label}</div>
+          <div className="my-way-node__tooltip-type">{data.nodeType}</div>
           {data.description && (
             <div className="my-way-node__description">
               {data.description}
@@ -85,7 +86,6 @@ function handleMouseEnter() {
             </div>
           )}
         </div>
-      )}
 
       <Handle
         type="source"

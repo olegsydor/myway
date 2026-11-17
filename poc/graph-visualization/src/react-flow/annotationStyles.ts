@@ -1,6 +1,6 @@
 import type { RectangleAnnotation } from "../shared/annotations";
 export const ANNOTATION_COLORS = {
-  gray: "#475569", blue: "#2563eb", green: "#15803d", yellow: "#ca8a04", red: "#dc2626", purple: "#9333ea",
+  gray: "#53657b", blue: "#346dcb", green: "#39785b", yellow: "#8b681d", red: "#a94753", purple: "#8051aa",
 } as const;
 export const ANNOTATION_TEXT_SIZE = { small: 14, medium: 20, large: 28 } as const;
 export const RECTANGLE_FILL = { none: 0, light: 0.10, medium: 0.22 } as const;

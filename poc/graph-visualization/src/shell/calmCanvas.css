@@ -1,0 +1,195 @@
+/* Shared product surfaces. Existing sizing, docking and interaction rules remain. */
+.application-shell { color: var(--mw-text); }
+.application-shell__bar {
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border-bottom: 1px solid var(--mw-border);
+  font-size: 14px;
+}
+.application-bar__identity { letter-spacing: -0.4px; }
+.application-shell__bar .application-menu__entry > button,
+.application-shell__bar .application-bar__tools,
+.application-shell__bar > .annotation-button-row button {
+  color: var(--mw-text);
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--mw-radius-control);
+}
+.application-shell__bar .application-bar__tools { border-color: var(--mw-border); }
+.application-shell__bar > .annotation-button-row {
+  gap: 2px;
+  padding: 2px;
+  background: var(--mw-subtle);
+  border: 1px solid var(--mw-input-border);
+  border-radius: var(--mw-radius-surface);
+}
+.application-shell__bar .application-menu__entry > button:hover:not(:disabled),
+.application-shell__bar .application-bar__tools:hover,
+.application-shell__bar > .annotation-button-row button:hover:not(:disabled) {
+  background: var(--mw-subtle);
+}
+.application-shell__bar .application-menu__entry > button[aria-expanded="true"],
+.application-shell__bar > .annotation-button-row button[aria-pressed="true"] {
+  background: var(--mw-accent-soft);
+  color: var(--mw-accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+.application-shell__bar > .annotation-button-row button[aria-pressed="true"] {
+  background: var(--mw-panel);
+  border-color: var(--mw-border);
+  font-weight: 600;
+}
+.application-shell__bar .application-bar__save {
+  color: #fff;
+  background: var(--mw-accent);
+  border-color: var(--mw-accent);
+  border-radius: var(--mw-radius-control);
+}
+.application-shell__bar .application-bar__save:disabled {
+  color: var(--mw-secondary);
+  background: var(--mw-subtle);
+  border-color: var(--mw-border);
+  opacity: 1;
+}
+.application-shell__bar .application-bar__layout small { color: var(--mw-secondary); font-size: 12px; }
+:is(.application-shell, .layout-dialog) button:focus-visible,
+:is(.application-shell, .layout-dialog) input:focus-visible,
+:is(.application-shell, .layout-dialog) select:focus-visible,
+:is(.application-shell, .layout-dialog) textarea:focus-visible {
+  outline: 2px solid var(--mw-accent);
+  outline-offset: 2px;
+}
+/* A programmatically focused menu item is the active keyboard item. */
+.application-shell .application-menu__surface {
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border-color: var(--mw-border);
+  border-radius: var(--mw-radius-surface);
+  padding: 6px;
+  box-shadow: var(--mw-shadow);
+}
+.application-shell .application-menu__surface button {
+  padding: 8px 10px;
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border-radius: 4px;
+  font-size: 14px;
+}
+.application-shell .application-menu__surface button:focus,
+.application-shell .application-menu__surface button:hover:not(:disabled) {
+  color: var(--mw-accent);
+  background: var(--mw-accent-soft);
+}
+.application-shell .application-menu__surface button:disabled { color: var(--mw-secondary); }
+.application-shell .application-menu__surface button small,
+.application-shell .application-menu__heading { color: var(--mw-secondary); font-size: 12px; }
+.application-shell .application-menu__surface [role="separator"] { border-color: var(--mw-border); }
+
+.application-shell .react-flow-panel { border-top: 0; background: var(--mw-panel); }
+.application-shell .react-flow-sidebar { background: var(--mw-panel); border-color: var(--mw-border); font-size: 14px; }
+.application-shell .tools-panel__header { border-color: var(--mw-border); }
+.application-shell .tools-panel--overlay {
+  width: min(360px, 100%);
+  min-width: 0;
+  box-shadow: var(--mw-shadow);
+}
+.application-shell .tools-panel__backdrop { background: rgb(39 53 72 / 24%); }
+.application-shell .react-flow-toolbar,
+.application-shell .react-flow-edit-panel,
+.application-shell .react-flow-product-controls { border-color: var(--mw-border); }
+.application-shell .react-flow-toolbar > div,
+.application-shell .react-flow-edit-panel > div,
+.application-shell .react-flow-toolbar .graph-crud-controls > div {
+  padding: 14px;
+  background: var(--mw-panel);
+  border-color: var(--mw-border);
+  border-radius: var(--mw-radius-surface);
+}
+.application-shell .react-flow-sidebar h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.application-shell .react-flow-sidebar label { color: var(--mw-secondary); font-size: 12px; flex-wrap: wrap; }
+.application-shell .react-flow-sidebar input:not([type="checkbox"]):not([type="radio"]),
+.application-shell .react-flow-sidebar select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 10px;
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border: 1px solid var(--mw-input-border);
+  border-radius: var(--mw-radius-control);
+  font: inherit;
+}
+.application-shell input::placeholder { color: var(--mw-secondary); opacity: 1; }
+.application-shell .react-flow-properties { font-size: 12px; }
+.application-shell .react-flow-properties > div > input { width: 100%; }
+.application-shell .react-flow-sidebar button,
+.layout-dialog button,
+.application-shell .react-flow-container[role="status"] button {
+  padding: 8px 12px;
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border: 1px solid var(--mw-input-border);
+  border-radius: var(--mw-radius-control);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.application-shell .react-flow-sidebar button:hover:not(:disabled),
+.layout-dialog button:hover:not(:disabled) { background: var(--mw-subtle); }
+.application-shell .react-flow-sidebar button:disabled,
+.layout-dialog button:disabled,
+.application-shell .react-flow-container[role="status"] button:disabled { opacity: .55; cursor: default; }
+.application-shell .react-flow-sidebar .annotation-button-row button[aria-pressed="true"] {
+  color: var(--mw-accent);
+  background: var(--mw-accent-soft);
+  border-color: var(--mw-accent);
+  box-shadow: none;
+  font-weight: 600;
+}
+.application-shell .annotation-properties { padding: 12px; border-color: var(--mw-border); border-radius: var(--mw-radius-control); }
+.application-shell .annotation-properties legend { color: var(--mw-secondary); font-size: 12px; padding: 0 4px; }
+.application-shell .annotation-properties label { flex-direction: column; align-items: stretch; gap: 4px; }
+.application-shell .annotation-properties select { width: 100%; }
+.application-shell .react-flow-action-message,
+.application-shell .react-flow-control-group label,
+.application-shell .graph-search__summary,
+.application-shell .graph-search__result span,
+.application-shell .node-search-select__empty { color: var(--mw-secondary); font-size: 12px; }
+.application-shell .layout-messages { font-size: 12px; }
+.application-shell .layout-messages p { margin: 0; overflow-wrap: anywhere; }
+.application-shell .layout-messages p[role="status"] { color: var(--mw-secondary); }
+.application-shell .error { color: var(--mw-error); background: var(--mw-error-surface); border-radius: var(--mw-radius-control); }
+.application-shell .graph-search__results,
+.application-shell .node-search-select__options { background: var(--mw-panel); border-color: var(--mw-border); border-radius: var(--mw-radius-surface); box-shadow: var(--mw-shadow); }
+.application-shell .node-search-select__options > button { border: 0; text-align: left; }
+
+.layout-dialog {
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border-color: var(--mw-border);
+  border-radius: var(--mw-radius-dialog);
+  box-shadow: var(--mw-shadow);
+  font-size: 14px;
+}
+.layout-dialog::backdrop { background: rgb(39 53 72 / 38%); }
+.layout-dialog h2 { font-size: 20px; letter-spacing: -.3px; margin-bottom: 20px; }
+.layout-dialog label { color: var(--mw-secondary); font-size: 12px; }
+.layout-dialog input {
+  width: 100%; min-width: 0; padding: 10px 12px;
+  color: var(--mw-text); background: var(--mw-panel);
+  border: 1px solid var(--mw-input-border); border-radius: var(--mw-radius-control); font: inherit;
+}
+.layout-dialog-actions { margin-top: 20px; }
+:is(.application-shell, .layout-dialog) button.mw-action-primary { color: #fff; background: var(--mw-accent); border-color: var(--mw-accent); }
+:is(.application-shell, .layout-dialog) button.mw-action-primary:hover:not(:disabled) { background: #2b5fb5; }
+:is(.application-shell, .layout-dialog) button.mw-action-danger { color: var(--mw-error); border-color: #b97b82; background: var(--mw-panel); }
+:is(.application-shell, .layout-dialog) button.mw-action-danger:hover:not(:disabled) { background: var(--mw-error-surface); }
+.application-shell .graph-delete-dialog .graph-delete-confirm { color: #fff; background: #a33e49; border-color: #a33e49; }
+.application-shell .graph-delete-dialog .graph-delete-confirm:hover:not(:disabled) { background: #8b3540; }
+.application-shell .help-dialog dl > div { border-bottom: 1px solid var(--mw-border); padding-block: 10px; }
+.application-shell .react-flow-metrics { color: var(--mw-secondary); background: var(--mw-subtle); border-color: var(--mw-border); }
+
+@media (max-width: 600px) {
+  .application-shell .help-dialog dl > div { grid-template-columns: 1fr; gap: 4px; }
+  .layout-dialog input { font-size: 16px; }
+}

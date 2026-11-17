@@ -1,3 +1,4 @@
+import { GRAPH_APPEARANCE, NODE_APPEARANCE, FALLBACK_NODE_APPEARANCE } from './graphAppearance.ts'
 import {
   MarkerType,
   Position,
@@ -30,17 +31,6 @@ export interface ReactFlowElements {
   edges: ReactFlowEdge[]
 }
 
-const NODE_COLORS: Record<string, string> = {
-  person: '#3b82f6',
-  skill: '#10b981',
-  place: '#f59e0b',
-  event: '#8b5cf6',
-  organization: '#475569',
-  project: '#06b6d4',
-  hobby: '#b45309',
-  story: '#db2777',
-}
-
 export function toReactFlowElements(
   graph: GraphResponse,
 ): ReactFlowElements {
@@ -66,10 +56,10 @@ export function toReactFlowElements(
       style: {
         width: 140,
         padding: 10,
-        color: '#ffffff',
-        backgroundColor:
-          NODE_COLORS[node.type] ?? '#64748b',
-        border: '2px solid #ffffff',
+        color: GRAPH_APPEARANCE.text,
+        backgroundColor: (NODE_APPEARANCE[node.type] ?? FALLBACK_NODE_APPEARANCE).surface,
+        backgroundImage: `linear-gradient(to right, ${(NODE_APPEARANCE[node.type] ?? FALLBACK_NODE_APPEARANCE).marker} 3px, transparent 3px)`,
+        border: `2px solid ${GRAPH_APPEARANCE.border}`,
         borderRadius: 8,
       },
     }),
@@ -89,16 +79,16 @@ export function toReactFlowElements(
     },
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      width: 18,
-      height: 18,
-      color: '#94a3b8',
+      width: GRAPH_APPEARANCE.markerSize,
+      height: GRAPH_APPEARANCE.markerSize,
+      color: GRAPH_APPEARANCE.edge,
     },
     style: {
-      stroke: '#94a3b8',
-      strokeWidth: 2,
+      stroke: GRAPH_APPEARANCE.edge,
+      strokeWidth: GRAPH_APPEARANCE.edgeWidth,
     },
     labelStyle: {
-      fill: '#475467',
+      fill: GRAPH_APPEARANCE.text,
       fontSize: 10,
     },
   }))

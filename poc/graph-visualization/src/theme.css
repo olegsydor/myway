@@ -1,0 +1,18 @@
+/* Stage 18 — Calm Canvas. Graph geometry and annotation text metrics stay local. */
+:root {
+  --mw-canvas: #f7f9fc;
+  --mw-panel: #ffffff;
+  --mw-subtle: #f1f4f8;
+  --mw-text: #273548;
+  --mw-secondary: #617184;
+  --mw-border: #dbe3ec;
+  --mw-input-border: #8495aa;
+  --mw-accent: #346dcb;
+  --mw-accent-soft: #eaf1fc;
+  --mw-error: #8b3d46;
+  --mw-error-surface: #fcf4f4;
+  --mw-shadow: 0 5px 18px rgb(39 53 72 / 10%);
+  --mw-radius-control: 6px;
+  --mw-radius-surface: 8px;
+  --mw-radius-dialog: 12px;
+}

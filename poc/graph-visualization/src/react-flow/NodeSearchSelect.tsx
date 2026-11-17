@@ -1,3 +1,4 @@
+import { useSearchResultNavigation } from './useSearchResultNavigation.ts'
 import { useMemo, useState } from 'react'
 
 import type { GraphNode } from '../shared/types'
@@ -18,6 +19,7 @@ export function NodeSearchSelect({
   onChange,
 }: NodeSearchSelectProps) {
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
 
   const sortedNodes = useMemo(
     () =>
@@ -39,31 +41,41 @@ export function NodeSearchSelect({
     )
   }, [query, sortedNodes])
 
+  const { input: searchInput, buttons: resultButtons, inputKey, resultKey } = useSearchResultNavigation({ open: open && Boolean(query), count: query ? filteredNodes.length : 0,
+    disabled, onOpen: () => { if (query) setOpen(true); }, onClose: () => setOpen(false) })
+
   const selectedNode =
     nodes.find((node) => String(node.id) === value) ?? null
 
   return (
     <div className="node-search-select">
       <input
+        ref={searchInput}
+        onKeyDown={inputKey}
         type="text"
         placeholder={placeholder}
         value={query || selectedNode?.label || ''}
         onChange={(event) => {
           setQuery(event.target.value)
+          setOpen(Boolean(event.target.value))
           onChange('')
         }}
         disabled={disabled}
       />
 
-      {query && (
+      {query && open && (
         <div className="node-search-select__options">
-          {filteredNodes.map((node) => (
+          {filteredNodes.map((node, index) => (
             <button
               key={node.id}
+              ref={element => { resultButtons.current[index] = element }}
+              onKeyDown={event => resultKey(event, index)}
               type="button"
               onClick={() => {
                 onChange(String(node.id))
                 setQuery('')
+                setOpen(false)
+                searchInput.current?.focus()
               }}
               disabled={disabled}
             >

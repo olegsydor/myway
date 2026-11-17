@@ -74,7 +74,7 @@ export function LayoutControls({ layout, saveCommand, children }: {
             {validation && <p className="error" role="alert">{validation}</p>}
             {layout.error && <p className="error" role="alert">{layout.error}</p>}
             <div className="layout-dialog-actions">
-              <button type="submit" disabled={layout.blocked}>{layout.locked ? "Saving…" : dialog.kind === "new" ? "Create layout" : "Rename"}</button>
+              <button className="mw-action-primary" type="submit" disabled={layout.blocked}>{layout.locked ? "Saving…" : dialog.kind === "new" ? "Create layout" : "Rename"}</button>
               <button type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>
             </div>
           </form>
@@ -82,7 +82,7 @@ export function LayoutControls({ layout, saveCommand, children }: {
           <p>Open “{dialog.name}”? {layout.dirty ? "The current layout has unsaved changes." : "The current layout is saved."}</p>
           {layout.error && <p className="error" role="alert">{layout.error}</p>}
           <div className="layout-dialog-actions">
-            <button type="button" disabled={layout.blocked || !layout.dirty} onClick={() => void finishSwitch("save")}>Save and switch</button>
+            <button className="mw-action-primary" type="button" disabled={layout.blocked || !layout.dirty} onClick={() => void finishSwitch("save")}>Save and switch</button>
             <button type="button" disabled={layout.blocked} onClick={() => void finishSwitch("discard")}>{layout.dirty ? "Discard and switch" : "Open layout"}</button>
             <button type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>
           </div>
@@ -92,7 +92,7 @@ export function LayoutControls({ layout, saveCommand, children }: {
           <p>The default layout will open after deletion.</p>
           {layout.error && <p className="error" role="alert">{layout.error}</p>}
           <div className="layout-dialog-actions">
-            <button type="button" disabled={layout.blocked} onClick={() => {
+            <button className="mw-action-danger" type="button" disabled={layout.blocked} onClick={() => {
               void layout.deleteActive().then((success) => { if (success) setDialog(null); });
             }}>{layout.dirty ? "Delete and discard changes" : "Delete layout"}</button>
             <button type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>

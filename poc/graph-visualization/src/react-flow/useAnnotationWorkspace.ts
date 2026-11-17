@@ -17,6 +17,7 @@ interface Capture {
 }
 export interface AnnotationPointer {
   pointerId: number; button: number; isPrimary?: boolean; clientX: number; clientY: number;
+  altKey?: boolean;
   currentTarget: Capture; preventDefault(): void; stopPropagation(): void;
 }
 type ActiveGesture = (RectangleGesture | { kind: "move-text"; start: Point; original: TextAnnotation }) & { pointerId: number; capture: Capture };
@@ -111,7 +112,7 @@ export function useAnnotationWorkspace(options: Options) {
     closeEditor(); select(accepted.id); setError("");
     return true;
   }
-  function begin(event: AnnotationPointer, targetId?: string, handle?: ResizeHandle): boolean {
+  function begin(event: AnnotationPointer, targetId?: string, handle?: ResizeHandle, hitIds?: readonly string[]): boolean {
     const current = latest.current;
     if (modeRef.current !== "annotation" || current.locked || deleteRef.current || gesture.current ||
         event.button !== 0 || event.isPrimary === false) return false;
@@ -137,6 +138,17 @@ export function useAnnotationWorkspace(options: Options) {
       kind = "draw";
       select(null);
     } else {
+      if (event.altKey && hitIds?.length) {
+        // DOM hit order follows the rendered layers (including Text above Rectangle).
+        // Cycle selection only; never reorder the saved annotation array.
+        const ids = [...new Set(hitIds)].filter(id => current.annotations.some(annotation => annotation.id === id));
+        if (ids.length) {
+          const index = Math.max(0, ids.indexOf(selectedRef.current ?? ""));
+          targetId = ids[(index + 1) % ids.length];
+          // Alt on a selected resize handle still cycles; Alt-drag moves the chosen annotation.
+          handle = undefined;
+        }
+      }
       const target = current.annotations.find((annotation) => annotation.id === targetId);
       if (!target) { select(null); return false; }
       original = { ...target };

@@ -1,3 +1,4 @@
+import { GRAPH_APPEARANCE } from "./graphAppearance.ts";
 import { RECTANGLE_MIN_SIZE, normalizeRectangle, type RectangleAnnotation, type TextAnnotation } from "../shared/annotations.ts";
 import type { CSSProperties } from "react";
 
@@ -52,13 +53,13 @@ export function finishRectangle(gesture: RectangleGesture, point: Point): Rectan
 /** Deliberately preserves hidden flags and all graph/filter data. */
 export function clearNodeHighlights<T extends { selected?: boolean; style?: CSSProperties }>(nodes: T[]): T[] {
   return nodes.map((node) => ({ ...node, selected: false,
-    style: { ...node.style, opacity: 1, border: "2px solid #ffffff" } }));
+    style: { ...node.style, opacity: 1, border: `2px solid ${GRAPH_APPEARANCE.border}` } }));
 }
 export function clearEdgeHighlights<T extends { selected?: boolean; style?: CSSProperties; markerEnd?: unknown }>(edges: T[]): T[] {
   return edges.map((edge) => ({ ...edge, selected: false,
-    style: { ...edge.style, opacity: 1, stroke: "#94a3b8", strokeWidth: 2 },
+    style: { ...edge.style, opacity: 1, stroke: GRAPH_APPEARANCE.edge, strokeWidth: GRAPH_APPEARANCE.edgeWidth },
     markerEnd: typeof edge.markerEnd === "object" && edge.markerEnd !== null
-      ? { ...edge.markerEnd, color: "#94a3b8" } : edge.markerEnd,
+      ? { ...edge.markerEnd, color: GRAPH_APPEARANCE.edge } : edge.markerEnd,
   }));
 }
 
