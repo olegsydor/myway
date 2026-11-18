@@ -1,3 +1,5 @@
+import { AccountButton } from "./auth/AuthContext"
+import { AuthGate } from "./auth/AuthGate"
 import { ApplicationShell } from "./shell/ApplicationShell"
 import { lazy, Suspense, useEffect, useState } from 'react'
 
@@ -12,7 +14,7 @@ const ReactFlowGraph = lazy(() =>
   })),
 )
 
-function App() {
+function WorkspaceApp() {
   const [graph, setGraph] = useState<GraphResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,12 +25,13 @@ function App() {
   }
 
   useEffect(() => {
+    const controller = new AbortController()
     async function loadInitialGraph() {
       try {
         setIsLoading(true)
         setError(null)
 
-        const graphData = await fetchGraph()
+        const graphData = await fetchGraph(controller.signal)
         setGraph(graphData)
       } catch (loadError) {
         setError(
@@ -42,14 +45,15 @@ function App() {
     }
 
     void loadInitialGraph()
+    return () => controller.abort()
   }, [])
 
-  if (graph) return <Suspense fallback={<ApplicationShell bar={<strong>My Way</strong>}><p>Loading graph…</p></ApplicationShell>}>
+  if (graph) return <Suspense fallback={<ApplicationShell bar={<><strong>My Way</strong><AccountButton /></>}><p>Loading graph…</p></ApplicationShell>}>
     <ReactFlowGraph graph={graph} onGraphChanged={refreshGraph} recoveryScope={layoutRecoveryScope(graph.user_id)} />
   </Suspense>
 
   return (
-    <ApplicationShell bar={<strong>My Way</strong>}>
+    <ApplicationShell bar={<><strong>My Way</strong><AccountButton /></>}>
       {error && <p className="error">{error}</p>}
 
       {isLoading && !graph && <p>Loading graph…</p>}
@@ -59,6 +63,10 @@ function App() {
       )}
     </ApplicationShell>
   )
+}
+
+function App() {
+  return <AuthGate>{(user, generation) => <WorkspaceApp key={`${user.id}:${generation}`} />}</AuthGate>
 }
 
 export default App

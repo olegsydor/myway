@@ -26,7 +26,8 @@ export function useLayoutViewport(options: {
           if (!transition.preserve) {
             const stored = coordinator.stored();
             if (stored) await flow.setViewport(stored, { duration: 0 });
-            else await flow.fitView({ padding: 0.1, duration: 0 });
+            else if (flow.getNodes().length > 0) await flow.fitView({ padding: 0.1, duration: 0 });
+            else await flow.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 0 });
           }
           if (coordinator.finish(current, flow.getViewport())) setCompleted({ scope, id, transition, token: current });
         })();
@@ -43,7 +44,7 @@ export function useLayoutViewport(options: {
   }, [coordinator, generation]);
   const fit = useCallback(async (fitOptions: Parameters<ReactFlowInstance<ReactFlowNode, ReactFlowEdge>["fitView"]>[0]) => {
     const flow = instance.current;
-    if (!flow || !coordinator.current(generation)) return;
+    if (!flow || !coordinator.current(generation) || flow.getNodes().length === 0) return;
     await flow.fitView(fitOptions);
     coordinator.moved(generation, flow.getViewport());
   }, [instance, coordinator, generation]);

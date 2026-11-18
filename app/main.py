@@ -37,3 +37,9 @@ async def health(
         "environment": settings.app_env,
         "database": "ok",
     }
+
+
+from app.routers.auth import router as auth_router
+from app.core.auth_middleware import auth_boundary
+app.include_router(auth_router)
+app.middleware("http")(auth_boundary)

@@ -1,6 +1,6 @@
 import pytest
 
-from app.dependencies import auth
+from tests.auth_override import auth
 from app.models import Node, NodeType, User
 
 

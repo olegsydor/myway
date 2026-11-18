@@ -60,7 +60,9 @@ async def db_session(test_engine):
 
 
 @pytest_asyncio.fixture
-async def client(db_session):
+async def client(db_session, test_engine, monkeypatch):
+    from app.core import auth_middleware
+    monkeypatch.setattr(auth_middleware, "AsyncSessionFactory", async_sessionmaker(test_engine, expire_on_commit=False))
     async def override_get_db_session():
         yield db_session
 
@@ -73,7 +75,10 @@ async def client(db_session):
     async with AsyncClient(
         transport=transport,
         base_url="http://test",
+        headers={"Origin": "http://localhost:5173", "Content-Type": "application/json"},
     ) as test_client:
+        csrf = (await test_client.get("/auth/csrf")).json()["csrf_token"]
+        test_client.headers["X-CSRF-Token"] = csrf
         yield test_client
 
     app.dependency_overrides.clear()

@@ -1,3 +1,4 @@
+import { AccountButton } from "../auth/AuthContext";
 import { useState } from 'react';
 import { ApplicationMenu } from './ApplicationMenu';
 import { HelpDialog } from './HelpDialog';
@@ -38,6 +39,7 @@ export function ApplicationBar({ layoutName, status, layoutItems, save, commands
     <button className="application-bar__save" type="button" disabled={!save.enabled || blocked}
       title="Save layout (Cmd/Ctrl+S)" onClick={save.run}>Save</button>
     <WorkspaceModeSwitch workspace={workspace} locked={modeLocked || help} />
+    <AccountButton />
     <HelpDialog open={help} returnFocus={helpInvoker} onClose={() => setHelp(false)} />
   </>;
 }

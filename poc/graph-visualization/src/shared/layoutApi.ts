@@ -1,8 +1,9 @@
+import { request as authenticatedFetch } from "../auth/http.ts";
 import { annotationSnapshot, type Annotation } from "./annotations.ts";
 import type { LayoutDetail, LayoutPosition, SavedLayout } from "./persistentLayouts";
 
 async function request<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/layouts${path}`, {
+  const response = await authenticatedFetch(`/api/layouts${path}`, {
     method, signal,
     headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),

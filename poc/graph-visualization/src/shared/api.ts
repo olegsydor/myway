@@ -1,3 +1,4 @@
+import { request as authenticatedFetch } from "../auth/http.ts";
 
 import type {
   EdgeType,
@@ -20,7 +21,7 @@ const EDGES_ENDPOINT = '/api/edges'
 export async function fetchGraph(
   signal?: AbortSignal,
 ): Promise<GraphResponse> {
-  const response = await fetch(GRAPH_ENDPOINT, {
+  const response = await authenticatedFetch(GRAPH_ENDPOINT, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
@@ -40,7 +41,7 @@ export async function fetchGraph(
 export async function fetchNodeTypes(
   signal?: AbortSignal,
 ): Promise<NodeType[]> {
-  const response = await fetch(NODE_TYPES_ENDPOINT, {
+  const response = await authenticatedFetch(NODE_TYPES_ENDPOINT, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
@@ -61,7 +62,7 @@ export async function fetchNodeTypes(
 export async function fetchEdgeTypes(
   signal?: AbortSignal,
 ): Promise<EdgeType[]> {
-  const response = await fetch(EDGE_TYPES_ENDPOINT, {
+  const response = await authenticatedFetch(EDGE_TYPES_ENDPOINT, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
@@ -81,7 +82,7 @@ export async function fetchEdgeTypes(
 export async function createNode(
   data: NodeCreate,
 ): Promise<NodeRead> {
-  const response = await fetch(NODES_ENDPOINT, {
+  const response = await authenticatedFetch(NODES_ENDPOINT, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -103,7 +104,7 @@ export async function updateNode(
   nodeId: number,
   data: NodeUpdate,
 ): Promise<NodeRead> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${NODES_ENDPOINT}/${nodeId}`,
     {
       method: 'PATCH',
@@ -127,7 +128,7 @@ export async function updateNode(
 export async function createEdge(
   data: EdgeCreate,
 ): Promise<EdgeRead> {
-  const response = await fetch(EDGES_ENDPOINT, {
+  const response = await authenticatedFetch(EDGES_ENDPOINT, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -152,7 +153,7 @@ export async function updateEdge(
   edgeId: number,
   data: EdgeUpdate,
 ): Promise<EdgeRead> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${EDGES_ENDPOINT}/${edgeId}`,
     {
       method: 'PATCH',
@@ -179,7 +180,7 @@ export async function updateEdge(
 export async function deleteEdge(
   edgeId: number,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${EDGES_ENDPOINT}/${edgeId}`,
     {
       method: 'DELETE',
@@ -197,7 +198,7 @@ export async function deleteEdge(
 export async function deleteNode(
   nodeId: number,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${NODES_ENDPOINT}/${nodeId}`,
     {
       method: 'DELETE',

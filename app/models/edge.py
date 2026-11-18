@@ -42,13 +42,13 @@ class Edge(Base):
             ["user_id", "source_node_id"],
             ["nodes.user_id", "nodes.id"],
             name="fk_edges_source_node_owner",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
             ["user_id", "target_node_id"],
             ["nodes.user_id", "nodes.id"],
             name="fk_edges_target_node_owner",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         Index(
             "ix_edges_user_id_source_node_id",
@@ -110,6 +110,7 @@ class Edge(Base):
     )
 
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
         server_default=text("clock_timestamp()"),
         onupdate=text("clock_timestamp()"),

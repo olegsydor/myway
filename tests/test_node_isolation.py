@@ -36,7 +36,7 @@ async def test_user_cannot_read_another_users_node(
 
     # Temporary Stage 2 auth uses TEST_USER_ID.
     # For this test we want the API to act as user2.
-    from app.dependencies import auth
+    from tests.auth_override import auth
 
     original_user_id = auth.TEST_USER_ID
     auth.TEST_USER_ID = user2.id

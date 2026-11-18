@@ -1,3 +1,4 @@
+import { registerWorkspace } from "../auth/workspaceLifecycle";
 import { GRAPH_APPEARANCE } from "./graphAppearance.ts";
 import { useWorkspaceTitle } from "./useWorkspaceTitle";
 import { useLayoutViewport } from "./useLayoutViewport";
@@ -1819,6 +1820,13 @@ const handleNodesChange = useCallback(
     [edges, nodes, setNodes, layout.isLocked, layout.blocked, layout.dirty, annotationMode, fitCamera],
   );
 
+  useLayoutEffect(() => registerWorkspace({
+    dirty: layout.dirty,
+    busy: layout.blocked || layout.locked || Boolean(annotationWorkspace.editor) || annotationWorkspace.gestureActive,
+    save: () => layout.save(),
+    preserve: () => layout.preserveRecovery(),
+  }), [layout, annotationWorkspace.editor, annotationWorkspace.gestureActive]);
+
   const formActive = keyboardForm || Boolean(document.activeElement?.closest(
     ".react-flow-edit-panel, [data-graph-create]"));
   const commands = useWorkspaceCommands({
@@ -2820,6 +2828,10 @@ return (
     </ToolsPanel>
 
     <div className="react-flow-workspace">
+      {layout.startupReady && graphData.nodes.length === 0 && !annotationMode && <div className="first-run-hint">
+        <p>Your workspace is ready. Start with your first node.</p>
+        <button type="button" onClick={() => focusForm("createNode")}>Create your first node</button>
+      </div>}
 
 
       {diagnosticsRef.current && <div className="react-flow-metrics">

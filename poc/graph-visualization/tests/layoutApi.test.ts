@@ -72,7 +72,11 @@ test("startup GET forwards the cancellation signal", async () => {
   const controller = new AbortController();
   await mockedFetch(() => json([metadata]), async (calls) => {
     await fetchLayouts(controller.signal);
-    assert.equal(calls[0].options?.signal, controller.signal);
+    const sent = calls[0].options?.signal;
+    assert.equal(sent?.aborted, false);
+    // HTTP boundary composes caller cancellation with account-change cancellation.
+    // During an in-flight request both sources are tested in authHttp.test.ts.
+    assert.ok(sent instanceof AbortSignal);
   });
 });
 

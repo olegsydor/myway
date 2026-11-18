@@ -191,8 +191,8 @@ useEffect(() => {
   async function initializeLayout() {
     let offer: LayoutRecoveryRecord | null = null;
 
-    if (scope !== null && startup.layout !== null) {
-      const layoutId = startup.layout.id;
+    if (scope !== null) {
+      const layoutId = startup.layout?.id ?? null;
 
       const result = await checkStartupRecovery(
         () => {
@@ -209,8 +209,8 @@ useEffect(() => {
         scope,
         layoutId,
         latest.current.nodeIds,
-        startup.layout.positions,
-        startup.layout.annotations,
+        startup.layout?.positions ?? [],
+        startup.layout?.annotations ?? [],
       );
 
       if (result.status === "available") {
@@ -302,7 +302,7 @@ useEffect(() => {
     }
 
     if (!dirty) {
-      void controller.clear(scope, active.id).catch((cause) => {
+      void controller.clear(scope, active?.id ?? null).catch((cause) => {
         console.warn("Could not clear clean workspace recovery:", cause);
       });
       return;
@@ -311,21 +311,21 @@ useEffect(() => {
     try {
       const record = createRecoveryRecord(
         scope,
-        active.id,
+        active?.id ?? null,
         options.nodes,
-        saved.positions,
+        saved?.positions ?? [],
         new Date().toISOString(),
         options.annotations,
-        saved.annotations,
+        saved?.annotations ?? [],
       );
 
       const generation = controller.getGeneration(
         scope,
-        active.id,
+        active?.id ?? null,
       );
 
       controller.schedule(record, generation);
-      return () => controller.cancelScheduled(scope, active.id);
+      return () => controller.cancelScheduled(scope, active?.id ?? null);
     } catch (cause) {
       console.warn(
         "Failed to prepare layout recovery snapshot:",
@@ -652,6 +652,16 @@ async function discardRecovery(): Promise<void> {
 }
 
   return {
+    preserveRecovery: async () => {
+      const current = latest.current;
+      const controller = recoveryControllerRef.current;
+      // Explicit account teardown can preserve an initial layout too; never overwrite a recovery offer.
+      if (!controller || !current.recoveryScope || !dirty || phase !== "ready" || !ready || current.annotationBusy || current.graphBusy) return;
+      const record = createRecoveryRecord(current.recoveryScope, active?.id ?? null, current.nodes,
+        saved?.positions ?? [], new Date().toISOString(), current.annotations, saved?.annotations ?? []);
+      controller.schedule(record);
+      await controller.flush(current.recoveryScope, active?.id ?? null);
+    },
     active, layouts, dirty, phase, startupReady, cameraTransition,
     recoveryOffer,
     recoveryBusy,

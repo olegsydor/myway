@@ -609,3 +609,25 @@ test("recovery Discard gives clean title and no layouts gives unsaved title", as
   await run(() => current.save());
   assert.equal(document.title, "My Way — Main");
 });
+
+
+test("initial unsaved workspace survives account teardown under its own recovery scope", async () => {
+  layouts.clear();
+  await mount();
+  await run(() => current.move(73));
+  await run(() => current.editAnnotations([rectangle]));
+  await run(() => current.preserveRecovery());
+  const record = await readLayoutRecovery(scope, null) as { scope: string; positions: { x: number }[] };
+  assert.equal(record.scope, scope);
+  assert.equal(record.positions[0].x, 73);
+  assert.equal(await readLayoutRecovery("different-user", null), null);
+  await act(async () => root.unmount());
+  await mount();
+  assert.equal(current.phase, "recovery");
+  await run(() => current.restoreRecovery());
+  assert.equal(current.nodes[0].position.x, 73);
+  assert.deepEqual(current.annotations, [rectangle]);
+  await run(() => current.save());
+  assert.equal(current.active?.name, "Main");
+  assert.equal(await readLayoutRecovery(scope, null), null);
+});

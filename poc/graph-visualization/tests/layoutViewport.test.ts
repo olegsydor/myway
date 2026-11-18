@@ -56,7 +56,8 @@ test("rendered coordinator restores, fits, preserves new identity, and rejects o
   globalThis.cancelAnimationFrame = () => {};
   let viewport = { ...b };
   let fits = 0;
-  const instance = { current: { getViewport: () => viewport,
+  let nodeCount = 1;
+  const instance = { current: { getViewport: () => viewport, getNodes: () => Array(nodeCount).fill({}),
     setViewport: async (v: typeof a) => { viewport = v; return true; },
     fitView: async () => { fits++; viewport = { x: 0, y: 0, zoom: 1 }; return true; },
   } as unknown as ReactFlowInstance<ReactFlowNode, ReactFlowEdge> };
@@ -89,5 +90,12 @@ test("rendered coordinator restores, fits, preserves new identity, and rejects o
     await camera.fit({ padding: 0.1 });
     assert.deepEqual(readViewport(scope, 3), { x: 0, y: 0, zoom: 1 });
     await render(); await flush(); assert.equal(fits, 2);
+    // New accounts have zero nodes: React Flow's queued fitView must not stall camera readiness.
+    nodeCount = 0;
+    options = { ...options, id: null, transition: { generation: 3, preserve: false } };
+    await render(); await flush();
+    assert.equal(camera.ready, true); assert.equal(fits, 2);
+    assert.deepEqual(viewport, { x: 0, y: 0, zoom: 1 });
+    await camera.fit({ padding: .1 }); assert.equal(fits, 2);
   } finally { await act(async () => root?.unmount()); Object.assign(globalThis, originals); }
 });

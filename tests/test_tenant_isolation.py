@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.dependencies import auth
+from tests.auth_override import auth
 from app.models import Edge, EdgeType, Node, NodeType, User
 
 
