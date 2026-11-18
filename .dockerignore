@@ -7,3 +7,6 @@
 .pytest_cache
 *.zip
 *.log
+
+# Local verification/reset links must never enter an image
+.local-mail/

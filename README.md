@@ -1,6 +1,12 @@
 # My Way
 
-My Way backend application.
+My Way graph workspace: FastAPI/PostgreSQL backend and React Flow frontend.
+
+**Current stage: Stage 19 — Authentication and User Lifecycle, completed and locally accepted on 2026-11-18.**
+
+See [Stage 19 completion, local setup, migration and operator guide](docs/stage-19.md). Registration/login, verified email, server sessions, password recovery and account blocking are implemented. Existing user IDs and graph/layout/annotation ownership are preserved. There is no test-user authentication fallback.
+
+Local verification/reset emails are saved to `.local-mail/`; they are not sent to real mailboxes yet. `.env` and local mail must stay out of Git. Public HTTPS/SMTP deployment remains a separate step.
 
 ## Requirements
 
@@ -9,10 +15,10 @@ My Way backend application.
 
 ## Configuration
 
-Create the local environment file from the example:
+For a fresh installation, create the local environment file from the Stage 19 example. For an existing installation, preserve its database credentials and follow the Stage 19 migration guide; do not overwrite its `.env`:
 
 ```bash
-cp .env.example .env
+cp .env.stage19.example .env
 ```
 
 The `.env` file contains the local application and database configuration
@@ -111,6 +117,16 @@ docker compose up -d --build api
 
 ## Graph frontend
 
+For local development (Node 24 was used for Stage 19 verification):
+
+```bash
+cd poc/graph-visualization
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173`. The Vite proxy forwards `/api` to the local backend. Keep `PUBLIC_ORIGIN` consistent with this address. After verifying an account, sign in to open its workspace.
+
 The primary frontend graph stack selected in Stage 5 is:
 
 - React Flow 12.11.5
@@ -118,7 +134,7 @@ The primary frontend graph stack selected in Stage 5 is:
 
 The React Flow frontend supports:
 
-- automatic graph loading from `GET /graph` on application startup;
+- graph loading from `GET /graph` after session authentication;
 - creation, editing, and deletion of Nodes;
 - creation, editing, and deletion of directed Edges;
 - Node and Edge descriptions and Properties;
@@ -179,3 +195,4 @@ docs/stage-5.md
 docs/stage-6.md
 docs/stage-7.md
 docs/stage-8.md
+```
