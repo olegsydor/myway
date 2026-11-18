@@ -19,10 +19,13 @@ async def get_current_user(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(401, "session_expired")
     # Same lock order as block/reset/login. Serializes mutations against blocking.
     user = await session.scalar(select(User).where(User.id == auth.user_id).with_for_update().execution_options(populate_existing=True))
-    await session.refresh(auth)
+    # Maintenance can remove the session while this request waits for the user lock.
+    auth = await session.get(AuthSession, auth.id, populate_existing=True) if user is not None else None
     now = await db_now(session)
-    if user is None or auth.revoked_at is not None or auth.absolute_expires_at <= now or auth.last_seen_at + timedelta(days=settings.session_idle_days) <= now:
+    if auth is None or auth.revoked_at is not None or auth.absolute_expires_at <= now or auth.last_seen_at + timedelta(days=settings.session_idle_days) <= now:
         raise HTTPException(401, "session_expired")
+    if user.deletion_due_at is not None:
+        raise HTTPException(403, "account_pending_deletion")
     if blocked(user, now):
         raise HTTPException(403, "account_blocked")
     if user.email_verified_at is None or user.password_hash is None:

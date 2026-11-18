@@ -1,7 +1,13 @@
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string) { super(code); this.status = status; this.code = code; }
+  readonly detail?: unknown;
+  constructor(status: number, code: string, detail?: unknown) {
+    super(code);
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+  }
 }
 export class StaleRequest extends Error { constructor() { super("Account changed; request cancelled"); } }
 let generation = 0;
@@ -39,8 +45,10 @@ export async function request(path: string, init: RequestInit = {}, authFlow = f
       const body = await response.clone().json().catch(() => null);
       const detail = typeof body?.detail === "string" ? body.detail : Array.isArray(body?.detail)
         ? body.detail.map((item: { msg?: string }) => item.msg ?? "Invalid input").join("; ") : `Request failed (${response.status})`;
-      const error = new ApiError(response.status, detail);
-      if (!authFlow && (response.status === 401 || (response.status === 403 && ["account_blocked", "email_verification_required", "csrf_failed"].includes(detail)))) {
+      const code = typeof body?.detail?.code === "string" ? body.detail.code : detail;
+      if (generation !== started) throw new StaleRequest();
+      const error = new ApiError(response.status, code, body?.detail);
+      if (!authFlow && (response.status === 401 || (response.status === 403 && ["account_blocked", "account_pending_deletion", "email_verification_required", "csrf_failed"].includes(code)))) {
         onInvalid?.(error);
       }
       throw error;

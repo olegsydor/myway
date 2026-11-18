@@ -1,3 +1,5 @@
+import { downloadDataExport } from "./dataExport";
+import { importDataFile, importErrorMessage } from "./dataImport";
 import { AccountDialog } from "./AccountDialog";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApplicationShell } from "../shell/ApplicationShell";
@@ -7,6 +9,10 @@ import { workspaceExit } from "./workspaceLifecycle";
 import "./auth.css";
 
 interface User { id: number; email: string; display_name: string }
+interface PendingDeletion {
+  deletion_due_at: string;
+  can_cancel: boolean;
+}
 interface Session { user: User; csrf_token: string }
 type Screen = "login" | "register" | "forgot" | "resend" | "verify-email" | "reset-password";
 const explanations: Record<string, string> = {
@@ -17,6 +23,9 @@ const explanations: Record<string, string> = {
   invalid_or_expired_token: "This link is invalid or has expired. Request a new email.",
   invalid_current_password: "The current password is incorrect.",
   rate_limited: "Too many attempts. Please wait before trying again.",
+  deletion_not_pending: "This account is no longer scheduled for deletion. Try signing in again.",
+  deletion_window_closed: "The cancellation deadline has passed.",
+  invalid_deletion_input: "Check your account details and password.",
   csrf_failed: "Your session changed. Please sign in again.",
 };
 function message(error: unknown) {
@@ -45,6 +54,9 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [confirmDeletion, setConfirmDeletion] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  const [deletionPassword, setDeletionPassword] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [revision, setRevision] = useState(0);
   const mounted = useRef(true);
@@ -60,7 +72,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     void workspaceExit()?.preserve().catch(() => {});
     userRef.current = null;
     setIdentity(null, null);
-    setUser(null); setAccountOpen(false); setLeaving(false); setRevision(v => v+1);
+    setUser(null); setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); setRevision(v => v+1);
     setNotice(reason); setError("");
     setFields(value => ({ ...value, password: "", current_password: "" }));
     void preCsrf().catch(() => {});
@@ -106,6 +118,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
       const incoming = initialLink();
       if (!incoming.token) return;
       linkPending.current = true;
+      setPendingDeletion(null);
       closeWorkspace();
       setScreen(incoming.screen); setToken(incoming.token); setChecking(false); setConnectionError(false);
     };
@@ -152,7 +165,12 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
         setNotice("Your password is set. Sign in to continue."); notifyOtherTabs();
       }
       setFields(value => ({ ...value, password: "", current_password: "" }));
-    } catch (cause) { setError(message(cause)); }
+    } catch (cause) {
+      if (screen === "login" && cause instanceof ApiError && cause.code === "account_pending_deletion") {
+        setPendingDeletion(cause.detail as PendingDeletion);
+        setFields(value => ({ ...value, password: "" }));
+      } else setError(message(cause));
+    }
     finally { setBusy(false); }
   }
   async function logout(save: boolean) {
@@ -190,20 +208,152 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     {!user && <nav aria-label="Account options">{([ ["login", "Sign in"], ["register", "Create account"], ["forgot", "Forgot password?"], ["resend", "Resend verification"] ] as [Screen,string][]).filter(([value]) => value !== screen).map(([value,label]) => <button type="button" disabled={busy} key={value} onClick={() => { linkPending.current = false; setToken(""); setScreen(value); setError(""); setNotice(""); setFields(v => ({ ...v, password: "" })); }}>{label}</button>)}</nav>}
   </form>;
 
+  async function deleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError("");
+    const email = user?.email ?? "";
+    const started = identityGeneration();
+    try {
+      const result = await authRequest<{ deletion_due_at: string }>("/account/deletion", {
+        current_password: deletionPassword,
+      });
+      if (started !== identityGeneration()) return;
+      closeWorkspace();
+      setFields(value => ({ ...value, email }));
+      setPendingDeletion({ deletion_due_at: result.deletion_due_at, can_cancel: true });
+      notifyOtherTabs();
+    } catch (cause) {
+      if (started === identityGeneration()) {
+        if (cause instanceof ApiError && [401, 403].includes(cause.status)) void validate();
+        setError(message(cause));
+      }
+    } finally {
+      setDeletionPassword(""); setBusy(false);
+    }
+  }
+
+  async function cancelDeletion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError("");
+    try {
+      await preCsrf();
+      await authRequest("/account/deletion/cancel", { email: fields.email, password: deletionPassword });
+      setPendingDeletion(null);
+      setNotice("Deletion canceled. Sign in to open your workspace.");
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "deletion_window_closed") {
+        setPendingDeletion(value => value && { ...value, can_cancel: false });
+      }
+      setError(message(cause));
+    } finally {
+      setDeletionPassword(""); setBusy(false);
+    }
+  }
+
+  const deletionPasswordField = <label>Current password
+    <input type="password" autoComplete="current-password" required maxLength={128}
+      value={deletionPassword} onChange={event => setDeletionPassword(event.target.value)} />
+  </label>;
+  const pendingForm = pendingDeletion && <div>
+    <h1>Account scheduled for deletion</h1>
+    <p>{fields.email}</p>
+    <p>{pendingDeletion.can_cancel
+      ? <>Your workspace is locked. You can cancel until <time dateTime={pendingDeletion.deletion_due_at}>{new Date(pendingDeletion.deletion_due_at).toLocaleString()}</time>.</>
+      : "The cancellation deadline has passed."}</p>
+    {alerts}
+    {pendingDeletion.can_cancel && <form onSubmit={event => void cancelDeletion(event)}>
+      <fieldset disabled={busy}>
+        {deletionPasswordField}
+        <button type="submit">Cancel account deletion</button>
+      </fieldset>
+    </form>}
+    <button type="button" disabled={busy} onClick={() => {
+      setPendingDeletion(null); setDeletionPassword(""); setError("");
+    }}>Back to sign in</button>
+  </div>;
+
+  async function exportData() {
+    const started = identityGeneration();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await downloadDataExport();
+    } catch {
+      if (started === identityGeneration()) setError("Could not download your data. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importData(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const importForm = event.currentTarget;
+    const file = new FormData(importForm).get("exportFile");
+    if (!(file instanceof File)) return;
+
+    const started = identityGeneration();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const workspace = workspaceExit();
+      if (workspace?.busy) {
+        setError("Finish your current workspace edits before importing.");
+        return;
+      }
+      const result = await importDataFile(file);
+      if (started !== identityGeneration()) return;
+      if (result.nodes || result.edges || result.layouts) {
+        await workspace?.preserve().catch(() => {});
+        if (started !== identityGeneration()) return;
+        setRevision(value => value + 1);
+      }
+      importForm.reset();
+      setNotice(`Import complete. Nodes: ${result.nodes}, edges: ${result.edges}, layouts: ${result.layouts}.`);
+    } catch (cause) {
+      if (started === identityGeneration()) setError(importErrorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (checking) return <ApplicationShell bar={<strong>My Way</strong>}><p className="auth-status" role="status">Checking your session…</p></ApplicationShell>;
   if (user && !token) return <AccountContext.Provider value={{ openAccount: () => { setAccountOpen(true); setError(""); setNotice(""); } }}>
     {connectionError && <div className="connection-banner" role="status">Connection interrupted. Your workspace is still open. <button onClick={() => void validate()}>Retry</button></div>}
     {children(user, revision)}
-    {accountOpen && <AccountDialog busy={busy} onClose={() => { setAccountOpen(false); setLeaving(false); }}>
-      {leaving ? <><h1>Sign out?</h1><p>Your unsaved layout can stay in local recovery for this account.</p>{alerts}
+    {accountOpen && <AccountDialog busy={busy} onClose={() => { setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); }}>
+      {confirmDeletion ? <form onSubmit={event => void deleteAccount(event)}>
+        <h1>Delete your account?</h1>
+        <p>Every session will be signed out and your workspace will be locked. You have 30 days to cancel before your account and workspace data can be permanently deleted.</p>
+        {alerts}
+        <fieldset disabled={busy}>
+          {deletionPasswordField}
+          <button type="submit">Schedule account deletion</button>
+          <button type="button" onClick={() => { setConfirmDeletion(false); setDeletionPassword(""); setError(""); }}>Back to account</button>
+        </fieldset>
+      </form> : leaving ? <><h1>Sign out?</h1><p>Your unsaved layout can stay in local recovery for this account.</p>{alerts}
         <button disabled={busy || workspaceExit()?.busy} onClick={() => void logout(true)}>Save and sign out</button>
         <button disabled={busy} onClick={() => void logout(false)}>Leave without saving</button>
-        <button disabled={busy} onClick={() => setLeaving(false)}>Cancel</button></> : <>{form}<button disabled={busy} onClick={() => {
+        <button disabled={busy} onClick={() => setLeaving(false)}>Cancel</button></> : <>{form}<button type="button" disabled={busy} onClick={() => void exportData()}>Download my data (JSON)</button>
+        <form onSubmit={event => void importData(event)}>
+          <p>Restore a My Way JSON export into an empty account.</p>
+          <label>My Way export file
+            <input name="exportFile" type="file" accept=".json,application/json" required disabled={busy} />
+          </label>
+          <button type="submit" disabled={busy}>Import data (JSON)</button>
+        </form>
+        <button type="button" disabled={busy} onClick={() => {
+          setConfirmDeletion(true); setError(""); setNotice("");
+          setFields(value => ({ ...value, password: "", current_password: "" }));
+        }}>Delete account</button>
+        <button disabled={busy} onClick={() => {
           if (workspaceExit()?.dirty) setLeaving(true); else void logout(false);
         }}>Sign out</button><button disabled={busy} onClick={() => { setAccountOpen(false); setFields(v => ({ ...v, password: "", current_password: "" })); }}>Back to workspace</button></>}
     </AccountDialog>}
   </AccountContext.Provider>;
   return <ApplicationShell bar={<strong>My Way</strong>}><section className="auth-card">
-    {connectionError ? <><h1>Cannot connect to My Way</h1><button onClick={() => void validate()}>Try again</button></> : form}
+    {connectionError ? <><h1>Cannot connect to My Way</h1><button onClick={() => void validate()}>Try again</button></> : pendingForm ?? form}
   </section></ApplicationShell>;
 }

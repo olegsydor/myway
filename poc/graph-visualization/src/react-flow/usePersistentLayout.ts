@@ -2,7 +2,7 @@ import { readActiveLayout, writeActiveLayout, removeActiveLayout, removeViewport
 import { selectStartupLayout } from "./startupLayout.ts";
 import { annotationSnapshot, type Annotation } from "../shared/annotations.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { createLayout, deleteLayout, fetchLayout, fetchLayouts, saveLayout, updateLayout } from "../shared/layoutApi.ts";
+import { createInitialLayout, createLayout, deleteLayout, fetchLayout, fetchLayouts, saveLayout, updateLayout } from "../shared/layoutApi.ts";
 import {
   graphNodesReady, workspaceIsDirty, workspaceSnapshot, restoreWorkspace, restoreLayoutPositions,
   type LayoutDetail, type WorkspaceSnapshot, type SavedLayout,
@@ -423,7 +423,7 @@ useEffect(() => {
 
     const accepted = active
       ? await saveLayout(active.id, positions, annotations)
-      : await createLayout("Main", positions, annotations);
+      : await createInitialLayout(positions, annotations);
 
     // Server save succeeded. Invalidate the old local recovery.
     await clearLocalRecovery(previousLayoutId);

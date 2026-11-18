@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, String, Text, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -15,6 +15,8 @@ class User(Base):
     __tablename__ = "users"
 
     __table_args__ = (
+        Index("ix_users_deletion_due_at", "deletion_due_at",
+              postgresql_where=text("deletion_due_at IS NOT NULL")),
         CheckConstraint("status IN ('active', 'blocked')", name="ck_users_status"),
         CheckConstraint("status = 'blocked' OR (blocked_until IS NULL AND blocked_reason IS NULL)", name="ck_users_block_fields"),
     )
@@ -22,6 +24,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'active'"))
+    deletion_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     blocked_reason: Mapped[str | None] = mapped_column(String(1000))
     # Legacy rows may only be activated by the operator bootstrap command.

@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from email_validator import validate_email
+from app.commands.account_deletion import purge_due_accounts
 from app.core.database import AsyncSessionFactory
 from app.core.mail import send_action
 from app.core.security import db_now, issue_action, revoke_all
@@ -13,6 +14,11 @@ from app.models import User
 from app.models.auth import ActionToken, AuthRateLimit, AuthSession
 
 async def run(args):
+    if args.action == "purge-deleted-accounts":
+        deleted = await purge_due_accounts(AsyncSessionFactory)
+        print(json.dumps({"action": args.action, "deleted": deleted}))
+        return
+
     async with AsyncSessionFactory() as session:
         now = await db_now(session)
         if args.action == "cleanup":
@@ -64,6 +70,7 @@ def main():
         if name == "bootstrap":
             child.add_argument("--email", required=True, help="Operator-verified owner mailbox")
     commands.add_parser("cleanup")
+    commands.add_parser("purge-deleted-accounts", help="Permanently remove accounts past their deletion deadline")
     args = parser.parse_args()
     if getattr(args, "reason", None) and len(args.reason) > 1000:
         parser.error("Reason exceeds 1000 characters")

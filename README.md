@@ -196,3 +196,35 @@ docs/stage-6.md
 docs/stage-7.md
 docs/stage-8.md
 ```
+
+### Pending account deletion
+
+In Account, confirm **Delete account** with your current password. My Way
+signs out every session and locks the workspace. Signing in with the same
+credentials shows the deadline. To restore access within 30 days, enter
+your password again to cancel, then sign in.
+
+After deploying the migration with `alembic upgrade head`, schedule
+`python -m app.commands.auth purge-deleted-accounts` as a maintenance job
+against the application database. The command permanently deletes only
+accounts whose deadlines have passed and commits each account and its
+workspace data in one transaction. Running it again is safe after a failed
+or interrupted run. The deletion deadline closes the cancellation window
+even if the maintenance job has yet to run.
+
+### Safe Import and existing initial layouts
+
+Import accepts an empty workspace or a workspace with only its empty initial
+`Main` layout. The first normal Save records the origin of this layout.
+Existing layouts lack that record. If you have verified an existing layout's
+origin, pass its account and layout IDs when applying the migration. For
+example, for user 5 and layout 8:
+
+```sh
+alembic -x verified_initial_layout=5:8 upgrade head
+```
+
+The migration checks that the specified row is the only layout, is the
+default `Main`, and that the workspace has no nodes, edges, annotations,
+or saved positions. It records the layout's origin. The import transaction
+rechecks eligibility and replaces the layout only when the import succeeds.

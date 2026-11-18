@@ -33,7 +33,10 @@ class TokenPasswordInput(BaseModel):
     token: str = Field(min_length=32, max_length=128)
     password: str = Field(min_length=15, max_length=128)
 
-class ChangePasswordInput(BaseModel):
+class CurrentPasswordInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     current_password: str = Field(min_length=1, max_length=128)
+
+
+class ChangePasswordInput(CurrentPasswordInput):
     password: str = Field(min_length=15, max_length=128)

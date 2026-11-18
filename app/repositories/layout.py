@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +38,14 @@ async def layout_detail(session: AsyncSession, user_id: int, layout_id: int) -> 
     annotations = (await session.execute(select(LayoutAnnotation).where(
         LayoutAnnotation.user_id == user_id, LayoutAnnotation.layout_id == layout_id,
     ).order_by(LayoutAnnotation.order_index))).scalars()
+    return build_layout_detail(layout, positions, annotations)
+
+
+def build_layout_detail(
+    layout: Layout,
+    positions: Iterable[LayoutNodePosition],
+    annotations: Iterable[LayoutAnnotation],
+) -> LayoutDetail:
     return LayoutDetail(
         **LayoutRead.model_validate(layout).model_dump(),
         positions=[Position.model_validate(position) for position in positions],
@@ -101,7 +111,9 @@ async def create_layout(session: AsyncSession, user_id: int, data: LayoutCreate)
     await validate_snapshot(session, user_id, data)
     existing = await list_layouts(session, user_id)
     # Insert without default first, then transfer default status if requested.
-    layout = Layout(user_id=user_id, name=data.name, is_default=False)
+    if data.is_initial and (existing or data.name != "Main"):
+        raise LayoutError(409, "Initial layout must be the first layout and named Main")
+    layout = Layout(user_id=user_id, name=data.name, is_initial=data.is_initial, is_default=False)
     session.add(layout)
     await session.flush()
     if not existing or data.is_default:
@@ -148,6 +160,8 @@ async def update_layout(session: AsyncSession, user_id: int, layout_id: int, dat
     await lock_owner(session, user_id)
     layout = await get_layout(session, user_id, layout_id)
     if data.name is not None:
+        if layout.name != data.name:
+            layout.is_initial = False
         layout.name = data.name
     if data.is_default is True:
         await make_default(session, user_id, layout)

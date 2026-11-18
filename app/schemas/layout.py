@@ -79,6 +79,7 @@ class LayoutCreate(WorkspaceSnapshot):
     annotations: list[Annotation] = Field(default_factory=list, max_length=2000)
     name: LayoutName
     is_default: bool = Field(default=False, strict=True)
+    is_initial: bool = Field(default=False, strict=True)
 
 
 class LayoutUpdate(BaseModel):

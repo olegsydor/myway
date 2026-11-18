@@ -38,6 +38,12 @@ export async function createLayout(name: string, positions: LayoutPosition[], an
   return acceptedDetail(await request<LayoutDetail>("", "POST", { name, positions, annotations: annotationSnapshot(annotations) }));
 }
 
+export async function createInitialLayout(positions: LayoutPosition[], annotations: readonly Annotation[]): Promise<LayoutDetail> {
+  return acceptedDetail(await request<LayoutDetail>("", "POST", {
+    name: "Main", positions, annotations: annotationSnapshot(annotations), is_initial: true,
+  }));
+}
+
 export async function saveLayout(id: number, positions: LayoutPosition[], annotations: readonly Annotation[]): Promise<LayoutDetail> {
   return acceptedDetail(await request<LayoutDetail>(`/${id}/workspace`, "PUT", { positions, annotations: annotationSnapshot(annotations) }));
 }
