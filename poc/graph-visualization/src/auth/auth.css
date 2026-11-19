@@ -16,9 +16,47 @@
 .account-button { margin-left: 8px; white-space: nowrap; }
 @media(max-width: 520px) { .auth-card { margin: 24px 12px; padding: 20px; } }
 
-.account-dialog { width: min(430px, calc(100vw - 48px)); max-height: 85vh; overflow: auto; margin: auto; }
+.account-dialog { width: min(720px, calc(100vw - 48px)); max-width: none; max-height: 85vh; overflow: auto; margin: auto; padding: 28px; box-sizing: border-box; color: var(--mw-text); background: var(--mw-panel); border-color: var(--mw-border); border-radius: var(--mw-radius-dialog); box-shadow: var(--mw-shadow); }
 .account-dialog::backdrop { background: #172c4355; }
-.account-dialog > button { margin: 4px; }
+.account-dialog .account-settings h1 { margin: 0; font-size: 22px; }
+.account-dialog .account-settings h2 { margin: 0 0 8px; font-size: 16px; }
+.account-settings__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.account-settings__identity { display: grid; gap: 3px; padding-top: 3px; text-align: right; color: var(--mw-secondary); font-size: 13px; overflow-wrap: anywhere; }
+.account-settings__tabs { display: flex; gap: 8px; margin: 20px 0 12px; padding: 4px; border: 1px solid var(--mw-border); border-radius: 9px; background: var(--mw-subtle); }
+.account-dialog .account-settings__tabs button { flex: 1; min-width: 0; border-color: transparent; background: transparent; color: var(--mw-secondary); }
+.account-dialog .account-settings__tabs button[aria-selected="true"] { border-color: var(--mw-border); background: var(--mw-panel); color: var(--mw-accent); box-shadow: 0 1px 2px rgb(39 53 72 / 8%); }
+.account-dialog button:focus-visible, .account-dialog input:focus-visible { outline: 2px solid var(--mw-accent); outline-offset: 2px; }
+.account-settings__feedback:empty { display: none; }
+.account-settings__feedback { margin: 0 0 12px; }
+.account-settings__feedback p { margin: 8px 0; }
+.account-settings__card { margin-top: 12px; padding: 16px; border: 1px solid var(--mw-border); border-radius: var(--mw-radius-surface); background: var(--mw-panel); }
+.account-settings__card > p { margin: 6px 0 14px; color: var(--mw-secondary); }
+.account-settings__card fieldset { margin: 12px 0 0; }
+.account-settings__card label { color: var(--mw-text); }
+.account-dialog .account-settings__card input { max-width: 100%; min-width: 0; border-color: var(--mw-input-border); }
+.account-dialog .account-settings__card input[type="file"] { padding: 8px; }
+.account-settings__card input[type="file"]::file-selector-button { max-width: 100%; }
+.account-settings__card .account-settings__warning { color: var(--mw-error); }
+.account-dialog .account-settings button { min-height: 38px; }
+.account-dialog .account-settings button[type="submit"] { background: var(--mw-accent); border-color: var(--mw-accent); }
+.account-dialog .account-settings__card > button { color: #fff; background: var(--mw-accent); border-color: var(--mw-accent); }
+.account-dialog .account-settings .account-settings__secondary { color: var(--mw-text); background: var(--mw-panel); border-color: var(--mw-border); }
+.account-settings__danger { border-color: var(--mw-error); background: var(--mw-error-surface); }
+.account-settings__danger h2 { color: var(--mw-error); }
+.account-dialog .account-settings .account-settings__danger-button { color: var(--mw-error); border-color: var(--mw-error); background: transparent; }
+.account-settings__footer { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--mw-border); }
+@media (max-width: 600px) {
+  .account-dialog { width: calc(100vw - 24px); padding: 20px; }
+  .account-settings__header { display: block; }
+  .account-settings__identity { margin-top: 8px; text-align: left; }
+  .account-settings__tabs { display: grid; gap: 4px; }
+  .account-dialog .account-settings__tabs button { width: 100%; text-align: left; }
+  .account-settings__card { padding: 14px; }
+  .account-settings__card label, .account-settings__card input, .account-settings__card button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .account-dialog .account-settings input { font-size: 16px; }
+  .account-dialog .account-settings button[type="submit"], .account-dialog .account-settings__danger-button, .account-settings__footer button { width: 100%; }
+  .account-settings__footer { display: block; }
+}
 
 .first-run-hint { position: absolute; top: 28px; left: 50%; transform: translateX(-50%); z-index: 2; max-width: 90%; width: max-content; text-align: center; padding: 12px 20px; border: 1px solid #dce3eb; border-radius: 12px; background: #ffffffed; color: #42556c; font-size: 14px; }
 .first-run-hint p { margin: 0 0 8px; }

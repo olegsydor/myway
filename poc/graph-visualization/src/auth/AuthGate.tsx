@@ -1,5 +1,6 @@
 import { downloadDataExport } from "./dataExport";
 import { importDataFile, importErrorMessage, previewRestore, restoreWorkspace, type RestoreCounts } from "./dataImport";
+import { AccountSettings, type AccountSection } from "./AccountSettings";
 import { clearWorkspaceRecovery } from "../react-flow/layoutRecoveryController";
 import { layoutRecoveryScope } from "../react-flow/layoutRecoveryScope";
 import { AccountDialog } from "./AccountDialog";
@@ -56,6 +57,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [accountSection, setAccountSection] = useState<AccountSection>("profile");
   const [confirmDeletion, setConfirmDeletion] = useState(false);
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
   const [deletionPassword, setDeletionPassword] = useState("");
@@ -356,7 +358,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     setBusy(true); setError(""); setNotice(""); setRestoreConfirmed(false);
     try {
       const counts = await previewRestore(file);
-      if (started === identityGeneration()) setRestorePreview({ file, counts });
+      if (started === identityGeneration()) { setRestorePreview({ file, counts }); setAccountSection("data"); }
     } catch (cause) {
       if (started === identityGeneration()) setError(importErrorMessage(cause, "preview"));
     } finally {
@@ -393,12 +395,12 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
   }
 
   if (checking) return <ApplicationShell bar={<strong>My Way</strong>}><p className="auth-status" role="status">Checking your session…</p></ApplicationShell>;
-  if (user && !token) return <AccountContext.Provider value={{ openAccount: () => { setAccountOpen(true); setError(""); setNotice(""); } }}>
+  if (user && !token) return <AccountContext.Provider value={{ openAccount: () => { setAccountSection("profile"); setAccountOpen(true); setError(""); setNotice(""); } }}>
     {connectionError && <div className="connection-banner" role="status">Connection interrupted. Your workspace is still open. <button onClick={() => void validate()}>Retry</button></div>}
     {children(user, revision)}
-    {accountOpen && <AccountDialog busy={busy} onClose={() => { setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); setRestorePreview(null); setRestoreConfirmed(false); }}>
+    {accountOpen && <AccountDialog busy={busy} labelledBy="account-dialog-title" onClose={() => { setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); setRestorePreview(null); setRestoreConfirmed(false); setFields(v => ({ ...v, password: "", current_password: "" })); }}>
       {restorePreview ? <>
-        <h1>Replace your workspace?</h1>
+        <h1 id="account-dialog-title">Replace your workspace?</h1>
         <p role="alert">Restoring this file will permanently delete and replace your current workspace, including unsaved layout changes.</p>
         <p>{restorePreview.file.name}</p>
         <ul>
@@ -417,42 +419,44 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
               I understand that my current workspace will be permanently replaced.
             </label>
             <button className="restore-submit" type="submit" disabled={!restoreConfirmed}>Replace workspace</button>
-            <button type="button" onClick={() => { setRestorePreview(null); setRestoreConfirmed(false); setError(""); }}>Cancel</button>
+            <button type="button" onClick={() => { setRestorePreview(null); setRestoreConfirmed(false); setAccountSection("data"); setError(""); }}>Cancel</button>
           </fieldset>
         </form>
       </> : confirmDeletion ? <form onSubmit={event => void deleteAccount(event)}>
-        <h1>Delete your account?</h1>
+        <h1 id="account-dialog-title">Delete your account?</h1>
         <p>Every session will be signed out and your workspace will be locked. You have 30 days to cancel before your account and workspace data can be permanently deleted.</p>
         {alerts}
         <fieldset disabled={busy}>
           {deletionPasswordField}
           <button type="submit">Schedule account deletion</button>
-          <button type="button" onClick={() => { setConfirmDeletion(false); setDeletionPassword(""); setError(""); }}>Back to account</button>
+          <button type="button" onClick={() => { setConfirmDeletion(false); setDeletionPassword(""); setAccountSection("danger"); setError(""); }}>Back to account</button>
         </fieldset>
-      </form> : leaving ? <><h1>Sign out?</h1><p>Your unsaved layout can stay in local recovery for this account.</p>{alerts}
+      </form> : leaving ? <><h1 id="account-dialog-title">Sign out?</h1><p>Your unsaved layout can stay in local recovery for this account.</p>{alerts}
         <button disabled={busy || workspaceExit()?.busy} onClick={() => void logout(true)}>Save and sign out</button>
         <button disabled={busy} onClick={() => void logout(false)}>Leave without saving</button>
-        <button disabled={busy} onClick={() => setLeaving(false)}>Cancel</button></> : <>{form}<button type="button" disabled={busy} onClick={() => void exportData()}>Download my data (JSON)</button>
-        <form onSubmit={event => void importData(event)}>
-          <p>Import a My Way JSON export into an empty account.</p>
-          <label>My Way export file
-            <input name="exportFile" type="file" accept=".json,application/json" required disabled={busy} />
-          </label>
-          <button type="submit" disabled={busy}>Import data (JSON)</button>
-        </form>
-        <form onSubmit={event => void reviewRestore(event)}>
-          <label>Restore from a My Way JSON export
-            <input name="restoreFile" type="file" accept=".json,application/json" required disabled={busy} />
-          </label>
-          <button type="submit" disabled={busy}>Preview restore</button>
-        </form>
-        <button type="button" disabled={busy} onClick={() => {
-          setConfirmDeletion(true); setError(""); setNotice("");
-          setFields(value => ({ ...value, password: "", current_password: "" }));
-        }}>Delete account</button>
-        <button disabled={busy} onClick={() => {
-          if (workspaceExit()?.dirty) setLeaving(true); else void logout(false);
-        }}>Sign out</button><button disabled={busy} onClick={() => { setAccountOpen(false); setFields(v => ({ ...v, password: "", current_password: "" })); }}>Back to workspace</button></>}
+        <button disabled={busy} onClick={() => { setLeaving(false); setAccountSection("profile"); }}>Cancel</button></> : <AccountSettings
+          displayName={user.display_name}
+          email={user.email}
+          section={accountSection}
+          onSectionChange={setAccountSection}
+          currentPassword={fields.current_password}
+          newPassword={fields.password}
+          onCurrentPasswordChange={value => setFields(fields => ({ ...fields, current_password: value }))}
+          onNewPasswordChange={value => setFields(fields => ({ ...fields, password: value }))}
+          onPasswordSubmit={event => void submit(event)}
+          error={error}
+          notice={notice}
+          busy={busy}
+          onExport={() => void exportData()}
+          onImport={event => void importData(event)}
+          onRestorePreview={event => void reviewRestore(event)}
+          onDeleteAccount={() => {
+            setAccountSection("danger"); setConfirmDeletion(true); setError(""); setNotice("");
+            setFields(value => ({ ...value, password: "", current_password: "" }));
+          }}
+          onSignOut={() => { if (workspaceExit()?.dirty) setLeaving(true); else void logout(false); }}
+          onBackToWorkspace={() => { setAccountOpen(false); setFields(v => ({ ...v, password: "", current_password: "" })); }}
+        />}
     </AccountDialog>}
   </AccountContext.Provider>;
   return <ApplicationShell bar={<strong>My Way</strong>}><section className="auth-card">
