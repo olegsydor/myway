@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Edge, EdgeType, Layout, LayoutAnnotation, LayoutNodePosition, Node, NodeType
@@ -36,7 +36,7 @@ async def find_replaceable_layout(session: AsyncSession, user_id: int) -> Layout
     return initial
 
 
-async def restore_data(session: AsyncSession, user_id: int, data: DataImport) -> None:
+async def resolve_types(session: AsyncSession, data: DataImport) -> tuple[dict[str, int], dict[str, int]]:
     node_types = dict((await session.execute(select(NodeType.code, NodeType.id))).all())
     edge_types = dict((await session.execute(select(EdgeType.code, EdgeType.id))).all())
     if any(node.type not in node_types for node in data.nodes):
@@ -44,6 +44,18 @@ async def restore_data(session: AsyncSession, user_id: int, data: DataImport) ->
     if any(edge.type not in edge_types for edge in data.edges):
         raise ValueError("Unknown edge type")
 
+    return node_types, edge_types
+
+
+async def restore_data(session: AsyncSession, user_id: int, data: DataImport) -> None:
+    node_types, edge_types = await resolve_types(session, data)
+    await insert_workspace(session, user_id, data, node_types, edge_types)
+
+
+async def insert_workspace(
+    session: AsyncSession, user_id: int, data: DataImport,
+    node_types: dict[str, int], edge_types: dict[str, int],
+) -> None:
     nodes = {
         record.id: Node(
             user_id=user_id, node_type_id=node_types[record.type],
@@ -80,3 +92,12 @@ async def restore_data(session: AsyncSession, user_id: int, data: DataImport) ->
         )
         await write_positions(session, user_id, layout.id, snapshot)
         await write_annotations(session, user_id, layout.id, snapshot)
+
+
+async def replace_workspace(session: AsyncSession, user_id: int, data: DataImport) -> None:
+    # Validate references to the current catalog before touching workspace rows.
+    node_types, edge_types = await resolve_types(session, data)
+    # Layout deletion cascades to positions and annotations through owner-scoped FKs.
+    for model in (Layout, Edge, Node):
+        await session.execute(delete(model).where(model.user_id == user_id))
+    await insert_workspace(session, user_id, data, node_types, edge_types)

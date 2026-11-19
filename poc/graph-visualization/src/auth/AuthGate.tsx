@@ -1,5 +1,7 @@
 import { downloadDataExport } from "./dataExport";
-import { importDataFile, importErrorMessage } from "./dataImport";
+import { importDataFile, importErrorMessage, previewRestore, restoreWorkspace, type RestoreCounts } from "./dataImport";
+import { clearWorkspaceRecovery } from "../react-flow/layoutRecoveryController";
+import { layoutRecoveryScope } from "../react-flow/layoutRecoveryScope";
 import { AccountDialog } from "./AccountDialog";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApplicationShell } from "../shell/ApplicationShell";
@@ -58,6 +60,8 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
   const [deletionPassword, setDeletionPassword] = useState("");
   const [leaving, setLeaving] = useState(false);
+  const [restorePreview, setRestorePreview] = useState<{ file: File; counts: RestoreCounts } | null>(null);
+  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [revision, setRevision] = useState(0);
   const mounted = useRef(true);
   const validating = useRef(false);
@@ -73,6 +77,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     userRef.current = null;
     setIdentity(null, null);
     setUser(null); setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); setRevision(v => v+1);
+    setRestorePreview(null); setRestoreConfirmed(false);
     setNotice(reason); setError("");
     setFields(value => ({ ...value, password: "", current_password: "" }));
     void preCsrf().catch(() => {});
@@ -106,6 +111,21 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     }
   }, [closeWorkspace, preCsrf]);
 
+  const reloadRestoredWorkspace = useCallback(async (userId: number) => {
+    const started = identityGeneration();
+    workspaceExit()?.stopRecovery();
+    let recoveryCleared = true;
+    try {
+      const scope = layoutRecoveryScope(userId);
+      if (scope) await clearWorkspaceRecovery(scope);
+    } catch {
+      recoveryCleared = false;
+    } finally {
+      if (started === identityGeneration()) setRevision(value => value + 1);
+    }
+    return recoveryCleared;
+  }, []);
+
   useEffect(() => {
     mounted.current = true;
     onAuthInvalid(cause => closeWorkspace(message(cause)));
@@ -125,7 +145,15 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     window.addEventListener("hashchange", hashLink);
     if (typeof BroadcastChannel !== "undefined") {
       channel = new BroadcastChannel("myway-auth");
-      channel.onmessage = () => {
+      channel.onmessage = event => {
+        if (event.data?.type === "workspace-restored") {
+          if (userRef.current?.id === event.data.userId) {
+            setRestorePreview(null);
+            setRestoreConfirmed(false);
+            void reloadRestoredWorkspace(event.data.userId);
+          }
+          return;
+        }
         // Stop the old workspace immediately; only /me establishes the next identity.
         if (userRef.current) closeWorkspace("Session changed in another tab.");
         void validate();
@@ -138,7 +166,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
       window.removeEventListener("hashchange", hashLink);
       window.clearInterval(heartbeat); channel?.close(); channel = null;
     };
-  }, [closeWorkspace, validate]);
+  }, [closeWorkspace, reloadRestoredWorkspace, validate]);
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -319,12 +347,80 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     }
   }
 
+  async function reviewRestore(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const file = new FormData(event.currentTarget).get("restoreFile");
+    if (!(file instanceof File) || !file.name) return;
+    const started = identityGeneration();
+    setBusy(true); setError(""); setNotice(""); setRestoreConfirmed(false);
+    try {
+      const counts = await previewRestore(file);
+      if (started === identityGeneration()) setRestorePreview({ file, counts });
+    } catch (cause) {
+      if (started === identityGeneration()) setError(importErrorMessage(cause, "preview"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRestore(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || busy || !restorePreview || !restoreConfirmed) return;
+    if (workspaceExit()?.busy) {
+      setError("Finish your current workspace edits before restoring.");
+      return;
+    }
+    const started = identityGeneration();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await restoreWorkspace(restorePreview.file);
+      channel?.postMessage({ type: "workspace-restored", userId: user.id });
+      if (started !== identityGeneration()) return;
+      const recoveryCleared = await reloadRestoredWorkspace(user.id);
+      if (started !== identityGeneration()) return;
+      setRestorePreview(null); setRestoreConfirmed(false);
+      setNotice("Workspace restored.");
+      if (!recoveryCleared) setError("The workspace was replaced. This browser could not clear local recovery.");
+    } catch (cause) {
+      if (started === identityGeneration()) {
+        setRestoreConfirmed(false);
+        setError(importErrorMessage(cause, "restore"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (checking) return <ApplicationShell bar={<strong>My Way</strong>}><p className="auth-status" role="status">Checking your session…</p></ApplicationShell>;
   if (user && !token) return <AccountContext.Provider value={{ openAccount: () => { setAccountOpen(true); setError(""); setNotice(""); } }}>
     {connectionError && <div className="connection-banner" role="status">Connection interrupted. Your workspace is still open. <button onClick={() => void validate()}>Retry</button></div>}
     {children(user, revision)}
-    {accountOpen && <AccountDialog busy={busy} onClose={() => { setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); }}>
-      {confirmDeletion ? <form onSubmit={event => void deleteAccount(event)}>
+    {accountOpen && <AccountDialog busy={busy} onClose={() => { setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); setRestorePreview(null); setRestoreConfirmed(false); }}>
+      {restorePreview ? <>
+        <h1>Replace your workspace?</h1>
+        <p role="alert">Restoring this file will permanently delete and replace your current workspace, including unsaved layout changes.</p>
+        <p>{restorePreview.file.name}</p>
+        <ul>
+          <li>Nodes: {restorePreview.counts.nodes}</li>
+          <li>Edges: {restorePreview.counts.edges}</li>
+          <li>Layouts: {restorePreview.counts.layouts}</li>
+          <li>Positions: {restorePreview.counts.positions}</li>
+          <li>Annotations: {restorePreview.counts.annotations}</li>
+        </ul>
+        {alerts}
+        <button type="button" disabled={busy} onClick={() => void exportData()}>Download current workspace (JSON)</button>
+        <form onSubmit={event => void confirmRestore(event)}>
+          <fieldset disabled={busy}>
+            <label className="restore-confirmation"><input type="checkbox" required checked={restoreConfirmed}
+              onChange={event => setRestoreConfirmed(event.target.checked)} />
+              I understand that my current workspace will be permanently replaced.
+            </label>
+            <button className="restore-submit" type="submit" disabled={!restoreConfirmed}>Replace workspace</button>
+            <button type="button" onClick={() => { setRestorePreview(null); setRestoreConfirmed(false); setError(""); }}>Cancel</button>
+          </fieldset>
+        </form>
+      </> : confirmDeletion ? <form onSubmit={event => void deleteAccount(event)}>
         <h1>Delete your account?</h1>
         <p>Every session will be signed out and your workspace will be locked. You have 30 days to cancel before your account and workspace data can be permanently deleted.</p>
         {alerts}
@@ -338,11 +434,17 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
         <button disabled={busy} onClick={() => void logout(false)}>Leave without saving</button>
         <button disabled={busy} onClick={() => setLeaving(false)}>Cancel</button></> : <>{form}<button type="button" disabled={busy} onClick={() => void exportData()}>Download my data (JSON)</button>
         <form onSubmit={event => void importData(event)}>
-          <p>Restore a My Way JSON export into an empty account.</p>
+          <p>Import a My Way JSON export into an empty account.</p>
           <label>My Way export file
             <input name="exportFile" type="file" accept=".json,application/json" required disabled={busy} />
           </label>
           <button type="submit" disabled={busy}>Import data (JSON)</button>
+        </form>
+        <form onSubmit={event => void reviewRestore(event)}>
+          <label>Restore from a My Way JSON export
+            <input name="restoreFile" type="file" accept=".json,application/json" required disabled={busy} />
+          </label>
+          <button type="submit" disabled={busy}>Preview restore</button>
         </form>
         <button type="button" disabled={busy} onClick={() => {
           setConfirmDeletion(true); setError(""); setNotice("");

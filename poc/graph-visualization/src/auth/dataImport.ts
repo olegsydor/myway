@@ -9,15 +9,32 @@ interface ImportCounts {
 }
 
 export async function importDataFile(file: File): Promise<ImportCounts> {
+  return uploadExport<ImportCounts>("/api/import", file);
+}
+
+export interface RestoreCounts extends ImportCounts {
+  positions: number;
+  annotations: number;
+}
+
+export function previewRestore(file: File): Promise<RestoreCounts> {
+  return uploadExport("/api/restore/preview", file);
+}
+
+export function restoreWorkspace(file: File): Promise<RestoreCounts> {
+  return uploadExport("/api/restore?confirmed=true", file);
+}
+
+async function uploadExport<T>(path: string, file: File): Promise<T> {
   if (file.size > maxImportBytes) throw new ApiError(413, "Import file exceeds 64 MiB");
   const started = identityGeneration();
-  const response = await request("/api/import", { method: "POST", body: file });
-  const counts = await response.json() as ImportCounts;
+  const response = await request(path, { method: "POST", body: file });
+  const counts = await response.json() as T;
   if (started !== identityGeneration()) throw new StaleRequest();
   return counts;
 }
 
-export function importErrorMessage(error: unknown): string {
+export function importErrorMessage(error: unknown, operation = "import"): string {
   if (error instanceof ApiError) {
     if (error.status === 409 && error.code === "import_requires_empty_account") {
       return "Import is only available for an empty account.";
@@ -25,5 +42,5 @@ export function importErrorMessage(error: unknown): string {
     if (error.status === 422) return `Invalid My Way export. ${error.message}`;
     if (error.status === 413) return "Choose a JSON file no larger than 64 MiB.";
   }
-  return "Could not confirm the import. Check your workspace before trying again.";
+  return `Could not confirm the ${operation}. Check your workspace before trying again.`;
 }

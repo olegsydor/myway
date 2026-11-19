@@ -652,6 +652,10 @@ async function discardRecovery(): Promise<void> {
 }
 
   return {
+    stopRecovery: () => {
+      recoveryControllerRef.current?.dispose();
+      recoveryControllerRef.current = null;
+    },
     preserveRecovery: async () => {
       const current = latest.current;
       const controller = recoveryControllerRef.current;

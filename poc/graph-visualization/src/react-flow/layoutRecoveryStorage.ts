@@ -145,3 +145,26 @@ export async function deleteLayoutRecovery(
     db.close();
   }
 }
+
+export async function deleteWorkspaceRecovery(scope: string): Promise<void> {
+  const db = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      // Keys are JSON tuples. Match the entire first component, including its delimiter.
+      const prefix = `[${JSON.stringify(scope)},`;
+      const range = IDBKeyRange.bound(prefix, prefix + "\uffff");
+      const request = transaction.objectStore(STORE_NAME).openKeyCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        transaction.objectStore(STORE_NAME).delete(cursor.primaryKey);
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new Error("Workspace recovery delete aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}

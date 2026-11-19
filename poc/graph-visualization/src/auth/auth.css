@@ -23,3 +23,7 @@
 .first-run-hint { position: absolute; top: 28px; left: 50%; transform: translateX(-50%); z-index: 2; max-width: 90%; width: max-content; text-align: center; padding: 12px 20px; border: 1px solid #dce3eb; border-radius: 12px; background: #ffffffed; color: #42556c; font-size: 14px; }
 .first-run-hint p { margin: 0 0 8px; }
 .first-run-hint button { border: 1px solid #b9c6d6; border-radius: 6px; padding: 7px 10px; background: #f6f8fb; color: #244f79; cursor: pointer; }
+
+.auth-card .restore-confirmation { display: flex; align-items: baseline; gap: 8px; }
+.auth-card .restore-confirmation input { width: auto; }
+.auth-card button.restore-submit { background: #a02f38; border-color: #a02f38; }

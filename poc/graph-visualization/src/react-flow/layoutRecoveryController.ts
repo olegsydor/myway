@@ -5,6 +5,7 @@ import {
   readLayoutRecovery,
   writeLayoutRecovery,
   deleteLayoutRecovery,
+  deleteWorkspaceRecovery,
 } from "./layoutRecoveryStorage.ts";
 
 export interface RecoveryStorage {
@@ -242,4 +243,9 @@ export class LayoutRecoveryController {
     const key = this.key(scope, layoutId);
     return recoveryGenerations.get(key) ?? 0;
   }
+}
+
+export async function clearWorkspaceRecovery(scope: string): Promise<void> {
+  await sharedRecoveryQueue.settleScope(scope);
+  await deleteWorkspaceRecovery(scope);
 }

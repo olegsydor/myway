@@ -1,18 +1,21 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { indexedDB } from "fake-indexeddb";
+import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 
 import {
   readLayoutRecovery,
   writeLayoutRecovery,
   deleteLayoutRecovery,
+  deleteWorkspaceRecovery,
 } from "../src/react-flow/layoutRecoveryStorage.ts";
 
 import type { LayoutRecoveryRecord } from "../src/react-flow/layoutRecovery.ts";
 
+const originalKeyRange = globalThis.IDBKeyRange;
 const originalIndexedDB = globalThis.indexedDB;
 globalThis.indexedDB = indexedDB;
+globalThis.IDBKeyRange = IDBKeyRange;
 
 function makeRecord(
   scope = "test-user:test-graph",
@@ -115,4 +118,27 @@ test.after(() => {
   } else {
     globalThis.indexedDB = originalIndexedDB;
   }
+  if (originalKeyRange === undefined) {
+    Reflect.deleteProperty(globalThis, "IDBKeyRange");
+  } else {
+    globalThis.IDBKeyRange = originalKeyRange;
+  }
+});
+
+
+test("workspace replacement clears all recovery keys for the account only", async () => {
+  const scope = "myway:user:2";
+  const other = makeRecord("myway:user:20");
+  await Promise.all([
+    writeLayoutRecovery(makeRecord(scope, null)),
+    writeLayoutRecovery(makeRecord(scope, 7)),
+    writeLayoutRecovery(makeRecord(scope, 8)),
+    writeLayoutRecovery(other),
+  ]);
+
+  await deleteWorkspaceRecovery(scope);
+  await deleteWorkspaceRecovery(scope);
+
+  for (const id of [null, 7, 8]) assert.equal(await readLayoutRecovery(scope, id), null);
+  assert.deepEqual(await readLayoutRecovery(other.scope, other.layoutId), other);
 });

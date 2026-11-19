@@ -2,6 +2,7 @@ export interface WorkspaceExit {
   dirty: boolean;
   busy: boolean;
   save: () => Promise<boolean>;
+  stopRecovery: () => void;
   preserve: () => Promise<void>;
 }
 let current: WorkspaceExit | null = null;

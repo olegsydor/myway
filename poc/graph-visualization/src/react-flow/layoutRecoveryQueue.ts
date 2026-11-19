@@ -1,6 +1,11 @@
 export class LayoutRecoveryQueue {
   private readonly pending = new Map<string, Promise<void>>();
 
+  async settleScope(scope: string): Promise<void> {
+    const prefix = `[${JSON.stringify(scope)},`;
+    await Promise.all([...this.pending].filter(([key]) => key.startsWith(prefix)).map(([, work]) => work));
+  }
+
   enqueue<T>(
     key: string,
     operation: () => Promise<T>,

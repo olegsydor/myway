@@ -1825,6 +1825,7 @@ const handleNodesChange = useCallback(
     busy: layout.blocked || layout.locked || Boolean(annotationWorkspace.editor) || annotationWorkspace.gestureActive,
     save: () => layout.save(),
     preserve: () => layout.preserveRecovery(),
+    stopRecovery: layout.stopRecovery,
   }), [layout, annotationWorkspace.editor, annotationWorkspace.gestureActive]);
 
   const formActive = keyboardForm || Boolean(document.activeElement?.closest(
