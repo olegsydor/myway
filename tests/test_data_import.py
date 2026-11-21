@@ -146,7 +146,7 @@ async def test_validates_payload_before_writing_and_rolls_back_failed_restore(te
             data["edges"].append({**edge, "id": edge["id"] + 1})
 
         invalid_documents = (
-            lambda data: data.update(schema_version=2),
+            lambda data: data.update(schema_version=3),
             lambda data: data.update(schema_version=True),
             lambda data: data.pop("schema_version"),
             lambda data: data["nodes"][0].update(id="1"),
@@ -263,3 +263,37 @@ async def test_import_destination_regressions(test_engine, monkeypatch, kind):
         assert response.json()["detail"] == "import_requires_empty_account"
         after = (await target.get("/export")).json()
         assert {**after, "exported_at": before["exported_at"]} == before
+
+
+@pytest.mark.asyncio
+async def test_legacy_import_and_shape_metadata_restore(test_engine, monkeypatch):
+    async with real_clients(test_engine, monkeypatch) as (source, target, factory, delivered):
+        await signup(source, "shape-source@example.com", delivered)
+        await signup(target, "shape-target@example.com", delivered)
+        legacy = (await export_graph(source, factory)).json()
+        assert legacy["schema_version"] == 2
+        legacy["schema_version"] = 1
+        assert (await target.post("/import", json=legacy)).status_code == 201
+
+        layout = legacy["layouts"][1]
+        rectangle, text = layout["annotations"]
+        rectangle = {**rectangle, "name": "  Роки ", "description": "First\nSecond"}
+        ellipse = {**rectangle, "id": str(uuid4()), "kind": "ellipse", "name": None}
+        response = await source.put(f"/layouts/{layout['id']}/workspace", json={
+            "positions": layout["positions"], "annotations": [ellipse, rectangle, text],
+        })
+        assert response.status_code == 200, response.text
+        shapes = response.json()["annotations"]
+        assert "name" not in shapes[0] and shapes[1]["name"] == "Роки"
+        exported = (await source.get("/export")).json()
+        assert exported["layouts"][1]["annotations"] == shapes
+        preview = await target.post("/restore/preview", json=exported)
+        assert preview.status_code == 200 and preview.json()["annotations"] == 3
+        assert sum(len(item["annotations"]) for item in (await target.get("/export")).json()["layouts"]) == 2
+        response = await target.post("/restore?confirmed=true", json=exported)
+        assert response.status_code == 200, response.text
+        restored = (await target.get("/export")).json()["layouts"][1]["annotations"]
+        assert len(restored) == 3
+        for before, after in zip(shapes, restored, strict=True):
+            assert after["id"] != before["id"]
+            assert after == {**before, "id": after["id"]}

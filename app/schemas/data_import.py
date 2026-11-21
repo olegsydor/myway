@@ -39,7 +39,7 @@ class ImportLayout(ImportRecord, WorkspaceSnapshot):
 class DataImport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[1]
+    schema_version: Literal[1, 2]
     exported_at: AwareDatetime
     nodes: list[ImportNode]
     edges: list[ImportEdge]
@@ -94,9 +94,17 @@ def parse_data_import(raw: bytes | bytearray) -> DataImport:
     document = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
     if isinstance(document, dict) and "schema_version" in document:
         version = document["schema_version"]
-        if type(version) is not int or version != 1:
+        if type(version) is not int or version not in (1, 2):
             raise ValueError("Unsupported export schema version")
-
+        if version == 1 and isinstance(document.get("layouts"), list):
+            for layout in document["layouts"]:
+                if not isinstance(layout, dict) or not isinstance(layout.get("annotations"), list):
+                    continue
+                for annotation in layout["annotations"]:
+                    if isinstance(annotation, dict) and (
+                        annotation.get("kind") == "ellipse" or {"name", "description"} & annotation.keys()
+                    ):
+                        raise ValueError("Shape metadata and ellipse require export schema version 2")
     pending = [document]
     while pending:
         value = pending.pop()

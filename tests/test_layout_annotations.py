@@ -58,7 +58,7 @@ async def test_workspace_lifecycle(client, graph, db_session):
 
 
 INVALID = [
-    {"id": "bad"}, {"id": True}, {"kind": "ellipse"}, {"x": "2"}, {"x": True},
+    {"id": "bad"}, {"id": True}, {"kind": "polygon"}, {"x": "2"}, {"x": True},
     {"x": float("nan")}, {"y": float("inf")}, {"width": 0}, {"height": -1},
     {"width": float("inf")}, {"color": "pink"}, {"fill": "heavy"},
     {"border": "wide"}, {"node_id": 1}, {"text": "forbidden"}, {"size": "large"},
@@ -177,7 +177,7 @@ async def test_atomic_create_rollback(client, graph, monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("changes", [
     {"x": float("nan")}, {"y": float("-inf")}, {"width": float("inf")},
-    {"width": 0}, {"height": -1}, {"width": None}, {"kind": "ellipse"},
+    {"width": 0}, {"height": -1}, {"width": None}, {"kind": "polygon"},
     {"text": "forbidden"}, {"size": "large"}, {"fill": None}, {"border": "wide"},
     {"color": "pink"}, {"order_index": -1}, {"order_index": 2000},
     {"kind": "text", "width": None, "height": None, "fill": None, "border": None, "size": "small", "text": " \n\t"},
@@ -221,10 +221,14 @@ async def test_migration_upgrade_downgrade_preserves_positions(db_session, test_
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
 
-    spec = importlib.util.spec_from_file_location('annotations_migration', Path(
-        'alembic/versions/d15a01e4b901_add_layout_annotations.py'))
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
+    def load_migration(filename):
+        spec = importlib.util.spec_from_file_location(filename.removesuffix(".py"), Path("alembic/versions") / filename)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        return migration
+
+    migration = load_migration("d15a01e4b901_add_layout_annotations.py")
+    shapes = load_migration("a21a01e4b901_annotation_shapes_and_metadata.py")
     users, node, layout = await seed(db_session)
     owner_id, node_id, layout_id = users[0].id, node.id, layout.id
     db_session.add(LayoutNodePosition(user_id=owner_id, layout_id=layout_id, node_id=node_id, x=1.25, y=-2.5))
@@ -241,17 +245,22 @@ async def test_migration_upgrade_downgrade_preserves_positions(db_session, test_
     await migrate(migration.downgrade)
     for _ in range(2):
         await migrate(migration.upgrade)
-        assert (await db_session.execute(select(LayoutAnnotation))).scalars().all() == []
-        values = rectangle()
-        values['annotation_id'] = UUID(values.pop('id'))
-        db_session.add(LayoutAnnotation(user_id=owner_id, layout_id=layout_id, order_index=0, **values))
+        # Use the frozen Stage 15 columns while exercising the Stage 15 migration.
+        assert await db_session.scalar(text("SELECT count(*) FROM layout_annotations")) == 0
+        await db_session.execute(text("""
+            INSERT INTO layout_annotations
+                (user_id, layout_id, annotation_id, order_index, kind, x, y, width, height, color, fill, border)
+            VALUES
+                (:owner_id, :layout_id, :annotation_id, 0, 'rectangle', 0, 0, 120, 80, 'blue', 'light', 'normal')
+        """), {"owner_id": owner_id, "layout_id": layout_id, "annotation_id": uuid4()})
         await db_session.commit()
         await migrate(migration.downgrade)
         rows = (await db_session.execute(select(LayoutNodePosition))).scalars().all()
         assert [(p.layout_id, p.node_id, p.x, p.y) for p in rows] == [(layout_id, node_id, 1.25, -2.5)]
         await db_session.commit()
-    # Leave the metadata-backed fixture schema intact for teardown.
+    # Restore the current metadata-backed fixture schema after the legacy checks.
     await migrate(migration.upgrade)
+    await migrate(shapes.upgrade)
 
 
 @pytest.mark.asyncio

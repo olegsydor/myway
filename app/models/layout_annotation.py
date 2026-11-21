@@ -17,15 +17,18 @@ class LayoutAnnotation(Base):
         CheckConstraint("x > '-Infinity'::float8 AND x < 'Infinity'::float8 AND "
                         "y > '-Infinity'::float8 AND y < 'Infinity'::float8", name="ck_annotations_finite"),
         CheckConstraint("color IN ('gray','blue','green','yellow','red','purple')", name="ck_annotations_color"),
-        CheckConstraint("(kind = 'rectangle' AND width IS NOT NULL AND height IS NOT NULL "
+        CheckConstraint("(kind IN ('rectangle','ellipse') AND width IS NOT NULL AND height IS NOT NULL "
                         "AND width > 0 AND width < 'Infinity'::float8 "
                         "AND height > 0 AND height < 'Infinity'::float8 "
                         "AND text IS NULL AND size IS NULL AND fill IS NOT NULL AND border IS NOT NULL "
-                        "AND fill IN ('none','light','medium') AND border IN ('thin','normal','thick')) OR "
+                        "AND fill IN ('none','light','medium') AND border IN ('thin','normal','thick') "
+                        "AND (name IS NULL OR char_length(btrim(name, U&'\\0009\\000A\\000B\\000C\\000D\\001C\\001D\\001E\\001F\\0020\\0085\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000')) > 0) "
+                        "AND (description IS NULL OR (char_length(description) <= 2000 "
+                        "AND char_length(btrim(description, U&'\\0009\\000A\\000B\\000C\\000D\\001C\\001D\\001E\\001F\\0020\\0085\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000')) > 0))) OR "
                         "(kind = 'text' AND width IS NULL AND height IS NULL AND fill IS NULL AND border IS NULL "
                         "AND text IS NOT NULL AND char_length(text) BETWEEN 1 AND 2000 "
                         "AND char_length(btrim(text, U&'\\0009\\000A\\000B\\000C\\000D\\001C\\001D\\001E\\001F\\0020\\0085\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000')) > 0 AND size IS NOT NULL "
-                        "AND size IN ('small','medium','large'))", name="ck_annotations_kind_fields"),
+                        "AND size IN ('small','medium','large') AND name IS NULL AND description IS NULL)", name="ck_annotations_kind_fields"),
     )
 
     layout_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -42,3 +45,5 @@ class LayoutAnnotation(Base):
     fill: Mapped[str | None] = mapped_column(String(16))
     border: Mapped[str | None] = mapped_column(String(16))
     size: Mapped[str | None] = mapped_column(String(16))
+    name: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)

@@ -1,9 +1,10 @@
 from datetime import datetime
+import re
 from uuid import UUID
 from typing import Annotated, Literal
 
 from pydantic import (
-    BaseModel, ConfigDict, Field, StringConstraints, model_validator,
+    BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_serializer, model_validator,
 )
 
 LayoutName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
@@ -41,12 +42,42 @@ class AnnotationBase(BaseModel):
     color: AnnotationColor
 
 
-class RectangleAnnotation(AnnotationBase):
-    kind: Literal["rectangle"]
+class ShapeAnnotation(AnnotationBase):
     width: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
     height: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
     fill: Literal["none", "light", "medium"]
     border: Literal["thin", "normal", "thick"]
+
+
+    name: Annotated[str, StringConstraints(strict=True, max_length=200)] | None = None
+    description: Annotated[str, StringConstraints(strict=True, max_length=2000)] | None = None
+
+    @field_validator("name", "description", mode="before")
+    @classmethod
+    def normalize_metadata(cls, value, info):
+        if not isinstance(value, str):
+            return value
+        if "\x00" in value or any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+            raise ValueError("Annotation metadata must be valid Unicode without NUL")
+        if info.field_name == "name":
+            value = re.sub(r"[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+", " ", value)
+        return value.strip() or None
+
+    @model_serializer(mode="wrap")
+    def serialize_metadata(self, handler):
+        data = handler(self)
+        for field in ("name", "description"):
+            if data.get(field) is None:
+                data.pop(field, None)
+        return data
+
+
+class RectangleAnnotation(ShapeAnnotation):
+    kind: Literal["rectangle"]
+
+
+class EllipseAnnotation(ShapeAnnotation):
+    kind: Literal["ellipse"]
 
 
 class TextAnnotation(AnnotationBase):
@@ -61,7 +92,7 @@ class TextAnnotation(AnnotationBase):
         return self
 
 
-Annotation = Annotated[RectangleAnnotation | TextAnnotation, Field(discriminator="kind")]
+Annotation = Annotated[RectangleAnnotation | EllipseAnnotation | TextAnnotation, Field(discriminator="kind")]
 
 
 class WorkspaceSnapshot(PositionSnapshot):

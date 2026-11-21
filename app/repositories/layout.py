@@ -51,8 +51,8 @@ def build_layout_detail(
         positions=[Position.model_validate(position) for position in positions],
         annotations=[dict(id=row.annotation_id, **{
             key: getattr(row, key) for key in (
-                ("kind", "x", "y", "color", "width", "height", "fill", "border")
-                if row.kind == "rectangle" else ("kind", "x", "y", "color", "text", "size")
+                ("kind", "x", "y", "color", "width", "height", "fill", "border", "name", "description")
+                if row.kind in ("rectangle", "ellipse") else ("kind", "x", "y", "color", "text", "size")
             )
         }) for row in annotations],
     )

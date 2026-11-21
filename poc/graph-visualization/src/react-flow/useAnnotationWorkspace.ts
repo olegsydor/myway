@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { ANNOTATION_LIMIT, annotationSnapshot, annotationTextHasContent, type Annotation, type RectangleAnnotation, type TextAnnotation } from "../shared/annotations.ts";
+import { ANNOTATION_LIMIT, annotationSnapshot, annotationTextHasContent, type Annotation, type ShapeAnnotation, type TextAnnotation } from "../shared/annotations.ts";
 import { finishRectangle, rectanglePreview, textMovePreview, type AnnotationTool, type Point, type RectangleGesture, type ResizeHandle, type WorkspaceMode } from "./annotationInteraction.ts";
 
 interface Options {
@@ -112,6 +112,18 @@ export function useAnnotationWorkspace(options: Options) {
     closeEditor(); select(accepted.id); setError("");
     return true;
   }
+  function cycleHit(targetId: string | undefined, hitIds: readonly string[]) {
+    // DOM hit order follows the rendered layers. Selection never reorders annotations.
+    const ids = [...new Set(hitIds)].filter(id => latest.current.annotations.some(item => item.id === id));
+    if (!ids.length) return targetId;
+    const index = Math.max(0, ids.indexOf(selectedRef.current ?? ""));
+    return ids[(index + 1) % ids.length];
+  }
+  function selectAt(targetId?: string, hitIds?: readonly string[]) {
+    if (latest.current.locked || gesture.current || editorRef.current || deleteRef.current ||
+        modeRef.current !== "annotation" || toolRef.current !== "select") return;
+    select((hitIds ? cycleHit(targetId, hitIds) : targetId) ?? null);
+  }
   function begin(event: AnnotationPointer, targetId?: string, handle?: ResizeHandle, hitIds?: readonly string[]): boolean {
     const current = latest.current;
     if (modeRef.current !== "annotation" || current.locked || deleteRef.current || gesture.current ||
@@ -128,31 +140,24 @@ export function useAnnotationWorkspace(options: Options) {
     }
     let original: Annotation;
     let kind: RectangleGesture["kind"];
-    if (toolRef.current === "rectangle") {
+    if (toolRef.current === "rectangle" || toolRef.current === "ellipse") {
       if (current.annotations.length >= ANNOTATION_LIMIT) {
         setError(`A layout can contain at most ${ANNOTATION_LIMIT} annotations.`); chooseTool("select");
         event.preventDefault(); event.stopPropagation(); return true;
       }
-      original = { id: crypto.randomUUID(), kind: "rectangle", x: start.x, y: start.y,
+      original = { id: crypto.randomUUID(), kind: toolRef.current, x: start.x, y: start.y,
         width: 0, height: 0, color: "blue", fill: "light", border: "normal" };
       kind = "draw";
       select(null);
     } else {
       if (event.altKey && hitIds?.length) {
-        // DOM hit order follows the rendered layers (including Text above Rectangle).
-        // Cycle selection only; never reorder the saved annotation array.
-        const ids = [...new Set(hitIds)].filter(id => current.annotations.some(annotation => annotation.id === id));
-        if (ids.length) {
-          const index = Math.max(0, ids.indexOf(selectedRef.current ?? ""));
-          targetId = ids[(index + 1) % ids.length];
-          // Alt on a selected resize handle still cycles; Alt-drag moves the chosen annotation.
-          handle = undefined;
-        }
+        targetId = cycleHit(targetId, hitIds);
+        handle = undefined;
       }
       const target = current.annotations.find((annotation) => annotation.id === targetId);
       if (!target) { select(null); return false; }
       original = { ...target };
-      kind = target.kind === "rectangle" && handle ? "resize" : "move";
+      kind = target.kind !== "text" && handle ? "resize" : "move";
       select(target.id);
     }
     event.preventDefault(); event.stopPropagation();
@@ -191,10 +196,27 @@ export function useAnnotationWorkspace(options: Options) {
   function cancelPointer(event: Pick<AnnotationPointer, "pointerId">) {
     if (gesture.current?.pointerId === event.pointerId) cancel();
   }
-  function setRectangleStyle(patch: Partial<Pick<RectangleAnnotation, "color" | "fill" | "border">>) {
+  function updateShape(patch: Partial<Pick<ShapeAnnotation, "color" | "fill" | "border" | "name" | "description" | "x" | "y">>) {
     if (latest.current.locked || gesture.current || editorRef.current || deleteRef.current || modeRef.current !== "annotation") return;
     latest.current.setAnnotations((annotations) => annotationSnapshot(annotations.map((annotation) =>
-      annotation.id === selectedRef.current && annotation.kind === "rectangle" ? { ...annotation, ...patch } : annotation)));
+      annotation.id === selectedRef.current && annotation.kind !== "text" ? { ...annotation, ...patch } : annotation)));
+  }
+  function selectShape(id: string) {
+    if (latest.current.locked || gesture.current || editorRef.current || deleteRef.current ||
+        modeRef.current !== "annotation" || toolRef.current !== "select") return;
+    if (!id || latest.current.annotations.some(annotation => annotation.id === id && annotation.kind !== "text")) {
+      select(id || null);
+    }
+  }
+  function moveSelectedShape(dx: number, dy: number): boolean {
+    if (latest.current.locked || gesture.current || editorRef.current || deleteRef.current ||
+        modeRef.current !== "annotation" || toolRef.current !== "select") return false;
+    const shape = latest.current.annotations.find(annotation => annotation.id === selectedRef.current);
+    if (!shape || shape.kind === "text") return false;
+    const x = shape.x + dx, y = shape.y + dy;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    updateShape({ x, y });
+    return true;
   }
   function setTextStyle(patch: Partial<Pick<TextAnnotation, "color" | "size">>) {
     if (latest.current.locked || gesture.current || editorRef.current || deleteRef.current || modeRef.current !== "annotation") return;
@@ -218,7 +240,7 @@ export function useAnnotationWorkspace(options: Options) {
   return { mode, tool, selected, selectedId, preview, deleteTarget, error, editor,
     editText, updateText, commitText, setComposing, setTextStyle,
     switchMode, setActiveTool, begin, move, end, cancelPointer, cancel, reset,
-    setRectangleStyle, requestDelete, cancelDelete, confirmDelete,
+    updateShape, selectShape, selectAt, moveSelectedShape, requestDelete, cancelDelete, confirmDelete,
     get gestureActive() { return gesture.current !== null; },
   };
 }

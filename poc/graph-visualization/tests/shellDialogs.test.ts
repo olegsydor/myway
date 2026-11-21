@@ -96,7 +96,7 @@ test('extracted mode switch delegates to Stage 15; annotation tools/properties r
   let root: ReturnType<typeof create>;
   try {
     await act(async () => { root = create(createElement('div', {},
-      createElement(WorkspaceModeSwitch, { workspace, locked: false }), createElement(AnnotationControls, { workspace, locked: false }))); });
+      createElement(WorkspaceModeSwitch, { workspace, locked: false }), createElement(AnnotationControls, { annotations: [workspace.selected], workspace, locked: false }))); });
     const buttons = root!.root.findAllByType('button');
     await act(async () => buttons.find(button => button.children.includes('Graph'))!.props.onClick());
     await act(async () => buttons.find(button => button.children.includes('Rectangle'))!.props.onClick());

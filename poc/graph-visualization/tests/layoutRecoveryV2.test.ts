@@ -68,3 +68,18 @@ test("startup never offers partial coordinates from a malformed v2 draft", async
   assert.equal(check({ ...record(), positions: new Array(1) }), "invalid");
   assert.equal(check({ ...record(), positions: [{ node_id: 1, x: "30", y: 40 }] }), "invalid");
 });
+
+test("Stage 21 preserves the baseline shape fingerprint and protects changed metadata", () => {
+  const legacyDraft = createRecoveryRecord(scope, 7, nodes, base, timestamp, [rectangle, text], [rectangle]);
+  const oldRectangle = { id: rectangle.id, x: rectangle.x, y: rectangle.y, color: rectangle.color,
+    kind: "rectangle", width: rectangle.width, height: rectangle.height, fill: rectangle.fill, border: rectangle.border };
+  const oldText = { id: text.id, x: text.x, y: text.y, color: text.color, kind: "text", text: text.text, size: text.size };
+  legacyDraft.baseAnnotationFingerprint = JSON.stringify([oldRectangle]);
+  legacyDraft.annotationFingerprint = JSON.stringify([oldRectangle, oldText]);
+  assert.equal(checkRecoveryCompatibility(legacyDraft, scope, 7, [1], base, [rectangle]), "compatible");
+  const named = { ...rectangle, name: "Group" };
+  const ellipse = { ...rectangle, kind: "ellipse" as const, description: "Two\nlines" };
+  const next = createRecoveryRecord(scope, 7, nodes, base, timestamp, [ellipse], [named]);
+  assert.equal(checkRecoveryCompatibility(next, scope, 7, [1], base, [named]), "compatible");
+  assert.equal(checkRecoveryCompatibility(next, scope, 7, [1], base, [rectangle]), "changed-annotations");
+});

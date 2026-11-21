@@ -18,7 +18,7 @@ async def test_export_is_complete_and_scoped_to_signed_in_account(test_engine, m
 
         empty = (await a.get("/export")).json()
         assert set(empty) == {"schema_version", "exported_at", "nodes", "edges", "layouts"}
-        assert empty["schema_version"] == 1
+        assert empty["schema_version"] == 2
         exported_at = datetime.fromisoformat(empty["exported_at"].replace("Z", "+00:00"))
         assert exported_at.utcoffset().total_seconds() == 0
         assert empty["nodes"] == empty["edges"] == empty["layouts"] == []

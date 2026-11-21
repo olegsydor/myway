@@ -41,6 +41,10 @@ async def test_clean_and_legacy_migrations():
                 lid=await connection.fetchval("INSERT INTO layouts(user_id,name,is_default) VALUES(1,'Main',true) RETURNING id")
                 await connection.execute('INSERT INTO layout_node_positions(layout_id,node_id,user_id,x,y) VALUES($1,$2,1,12,34)',lid,node)
                 await connection.execute("INSERT INTO layout_annotations(layout_id,annotation_id,user_id,kind,order_index,x,y,color,text,size) VALUES($1,$2,1,'text',0,3,4,'gray','Keep me','medium')",lid,uuid.uuid4())
+                await connection.execute(
+                    "INSERT INTO layout_annotations(layout_id,annotation_id,user_id,kind,order_index,x,y,color,width,height,fill,border) "
+                    "VALUES($1,$2,1,'rectangle',1,5,6,'blue',40,50,'light','normal')", lid, uuid.uuid4(),
+                )
                 for table in ('nodes','edges','layouts','layout_node_positions','layout_annotations'):
                     before[table]=await connection.fetch(f'SELECT * FROM {table}')
             options = ()
@@ -51,7 +55,7 @@ async def test_clean_and_legacy_migrations():
                 assert rejected.returncode != 0 and 'workspace is not empty' in rejected.stderr
                 options = ('-x', 'verified_initial_layout=5:8')
             result=migrate('head', *options);assert result.returncode==0,result.stderr
-            assert await connection.fetchval('SELECT version_num FROM alembic_version')=='a20c02f1a901'
+            assert await connection.fetchval('SELECT version_num FROM alembic_version')=='a21a01e4b901'
             if scenario=='legacy':
                 for table,rows in before.items():
                     if table == 'layouts':
@@ -59,12 +63,35 @@ async def test_clean_and_legacy_migrations():
                         assert [{k: v for k, v in row.items() if k != 'is_initial'} for row in restored] == [dict(row) for row in rows]
                         assert restored[0]['is_initial'] is False
                         assert await connection.fetchval('SELECT is_initial FROM layouts WHERE id=8') is True
+                    elif table == 'layout_annotations':
+                        restored = await connection.fetch('SELECT * FROM layout_annotations')
+                        assert [{k: v for k, v in row.items() if k not in ('name', 'description')}
+                                for row in restored] == [dict(row) for row in rows]
+                        assert all(row['name'] is None and row['description'] is None for row in restored)
                     else:
                         assert await connection.fetch(f'SELECT * FROM {table}')==rows
                 user=await connection.fetchrow('SELECT * FROM users WHERE id=1')
                 assert user['deletion_due_at'] is None
                 assert user['password_hash'] is None and user['email_verified_at'] is None and not user['activation_allowed']
                 assert await connection.fetchval("INSERT INTO users(email,email_normalized,display_name) VALUES('new@example.com','new@example.com','New') RETURNING id")>1
+            if scenario == 'legacy':
+                shape = uuid.uuid4()
+                await connection.execute(
+                    "INSERT INTO layout_annotations(layout_id,annotation_id,user_id,kind,order_index,x,y,color,width,height,fill,border,name,description) "
+                    "VALUES($1,$2,1,'ellipse',2,5,6,'blue',40,50,'light','normal','Title','Details')", lid, shape,
+                )
+                with pytest.raises(asyncpg.CheckViolationError):
+                    await connection.execute("UPDATE layout_annotations SET description = ' ' WHERE annotation_id=$1", shape)
+                import sys
+                downgrade = [sys.executable, '-m', 'alembic', 'downgrade', 'a20c02f1a901']
+                rejected = subprocess.run(downgrade, env=env, capture_output=True, text=True, timeout=60)
+                assert rejected.returncode != 0 and 'would lose ellipse' in rejected.stderr
+                assert await connection.fetchval('SELECT name FROM layout_annotations WHERE annotation_id=$1', shape) == 'Title'
+                await connection.execute('DELETE FROM layout_annotations WHERE annotation_id=$1', shape)
+                result = subprocess.run(downgrade, env=env, capture_output=True, text=True, timeout=60)
+                assert result.returncode == 0, result.stderr
+                result = migrate('head')
+                assert result.returncode == 0, result.stderr
             delete_rules=await connection.fetch("SELECT confdeltype FROM pg_constraint WHERE conname IN ('fk_edges_source_node_owner','fk_edges_target_node_owner')")
             assert [r['confdeltype'] for r in delete_rules]==[b'r',b'r'] or [r['confdeltype'] for r in delete_rules]==['r','r']
             await connection.close()

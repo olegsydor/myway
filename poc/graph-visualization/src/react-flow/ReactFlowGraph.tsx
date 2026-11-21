@@ -8,7 +8,8 @@ import { useCreateFormFocus } from "../shell/useCreateFormFocus";
 import { ApplicationShell } from "../shell/ApplicationShell";
 import { ApplicationBar } from "../shell/ApplicationBar";
 import { useWorkspaceCommands } from "./workspaceCommands";
-import { AnnotationControls, AnnotationDeleteDialog } from "./AnnotationControls";
+import { AnnotationControls, AnnotationDeleteDialog, type AnnotationDragMode } from "./AnnotationControls";
+import { AnnotationTooltip } from "./AnnotationTooltip";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotationWorkspace } from "./useAnnotationWorkspace";
 import { clearNodeHighlights, clearEdgeHighlights, type ResizeHandle } from "./annotationInteraction";
@@ -411,6 +412,43 @@ useEffect(() => {
     },
   });
   const annotationMode = annotationWorkspace.mode === "annotation";
+  const [annotationDragMode, setAnnotationDragMode] = useState<AnnotationDragMode>("pan");
+  const [annotationSpace, setAnnotationSpace] = useState(false);
+  const selectClick = useRef(false);
+  const annotationSelect = annotationMode && annotationWorkspace.tool === "select" && !annotationLocked &&
+    !annotationWorkspace.editor && !annotationWorkspace.deleteTarget;
+  const annotationPan = annotationSelect &&
+    (annotationDragMode === "move" ? annotationSpace : !annotationSpace);
+  useEffect(() => {
+    if (!annotationSelect) {
+      setAnnotationSpace(false);
+      return;
+    }
+    function press(event: KeyboardEvent) {
+      if (event.code !== "Space" || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.target instanceof Element && event.target.closest(
+        'input, textarea, select, button, a, [contenteditable], [role="textbox"], [role="dialog"], dialog',
+      )) return;
+      event.preventDefault();
+      setAnnotationSpace(true);
+    }
+    function clear() { setAnnotationSpace(false); }
+    function release(event: KeyboardEvent) { if (event.code === "Space") clear(); }
+    window.addEventListener("keydown", press);
+    window.addEventListener("keyup", release);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", press);
+      window.removeEventListener("keyup", release);
+      window.removeEventListener("blur", clear);
+    };
+  }, [annotationSelect]);
+
+  function annotationHits(x: number, y: number) {
+    return document.elementsFromPoint(x, y)
+      .map(element => element.closest<HTMLElement>("[data-annotation-id]")?.dataset.annotationId)
+      .filter((id): id is string => Boolean(id));
+  }
   const isLayoutLocked = layout.isLocked;
 
   function handleRectanglePointerDown(
@@ -2175,7 +2213,8 @@ return (
     <ToolsPanel open={toolsPanel.open} mode={toolsPanel.mode} onClose={toolsPanel.hide}>
         <div className="react-flow-toolbar">
         <LayoutMessages layout={layout} onRefreshGraph={refreshGraphForLayout} />
-        <AnnotationControls workspace={annotationWorkspace} locked={annotationLocked} />
+        <AnnotationControls annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked}
+          dragMode={annotationDragMode} onDragModeChange={setAnnotationDragMode} />
         <fieldset className="graph-crud-controls" hidden={annotationMode} disabled={annotationMode || annotationBusy}>
         <div data-graph-create ref={formSections.createNode}>
           <strong>Create Node</strong>
@@ -2923,29 +2962,71 @@ return (
       <div
         className={`react-flow-container workspace-${annotationWorkspace.mode}`}
         data-annotation-tool={annotationWorkspace.tool}
+        data-annotation-pan={annotationPan || undefined}
         style={{ position: "relative", visibility: camera.ready ? "visible" : "hidden" }}
         tabIndex={0}
         onFocusCapture={() => setKeyboardForm(false)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey ||
+              document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
+          const step = event.shiftKey ? 50 : 10;
+          const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+          const delta = direction[event.key as keyof typeof direction];
+          if (delta && annotationWorkspace.moveSelectedShape(delta[0] * step, delta[1] * step)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onPointerDownCapture={(event) => {
           setKeyboardForm(false);
+          selectClick.current = false;
           const target = event.target instanceof Element ? event.target : null;
+          if (annotationMode && annotationWorkspace.editor) {
+            if (target?.closest("[data-annotation-editor]")) return;
+            if (!target?.closest(".react-flow__controls, .react-flow__panel, button, input, textarea, select, a") &&
+                event.button === 0 && event.isPrimary !== false) {
+              // Finish editing before focus shifts so this click does not clear the text selection.
+              event.preventDefault();
+              event.stopPropagation();
+              if (annotationWorkspace.commitText()) event.currentTarget.focus({ preventScroll: true });
+              return;
+            }
+          }
           if (!target?.closest("button, input, textarea, select, a")) event.currentTarget.focus();
           if (annotationMode) {
             if (target?.closest(".react-flow__controls, .react-flow__panel, button, input, textarea, select, a")) return;
             const hit = target?.closest<HTMLElement>("[data-annotation-id]");
+            const handle = hit?.dataset.annotationResize as ResizeHandle | undefined;
+            if (annotationSelect && event.button === 0 && event.isPrimary !== false) {
+              if (annotationDragMode === "move" && annotationSpace) return;
+              if (annotationDragMode === "pan" && !annotationSpace && (!handle || event.altKey)) {
+                selectClick.current = true;
+                return;
+              }
+              if (annotationDragMode === "pan" && annotationSpace && (!handle || event.altKey)) {
+                const selected = annotationWorkspace.selectedId;
+                if (selected) annotationWorkspace.begin(event, selected);
+                else { event.preventDefault(); event.stopPropagation(); }
+                return;
+              }
+            }
             const hitIds = event.altKey && annotationWorkspace.tool === "select"
-              ? document.elementsFromPoint(event.clientX, event.clientY)
-                .map(element => element.closest<HTMLElement>("[data-annotation-id]")?.dataset.annotationId)
-                .filter((id): id is string => Boolean(id))
-              : undefined;
-            annotationWorkspace.begin(event, hit?.dataset.annotationId, hit?.dataset.annotationResize as ResizeHandle | undefined, hitIds);
+              ? annotationHits(event.clientX, event.clientY) : undefined;
+            annotationWorkspace.begin(event, hit?.dataset.annotationId, handle, hitIds);
             return;
           }
           handleRectanglePointerDown(event);
         }}
+        onClickCapture={(event) => {
+          if (!selectClick.current) return;
+          selectClick.current = false;
+          const hit = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-annotation-id]") : null;
+          annotationWorkspace.selectAt(hit?.dataset.annotationId,
+            event.altKey ? annotationHits(event.clientX, event.clientY) : undefined);
+        }}
         onDoubleClickCapture={(event) => {
           // Rapid Alt-clicks cycle overlaps; they must not enter a Text editor.
-          if (annotationMode && event.altKey) {
+          if (annotationMode && (event.altKey || annotationSpace)) {
             event.preventDefault(); event.stopPropagation(); return;
           }
           // Captured pointer-up events can retarget a double-click to the canvas.
@@ -2957,7 +3038,7 @@ return (
         }}
         onPointerMoveCapture={(event) => { if (annotationMode) annotationWorkspace.move(event); else handleRectanglePointerMove(event); }}
         onPointerUpCapture={(event) => { if (annotationMode) annotationWorkspace.end(event); else handleRectanglePointerUp(event); }}
-        onPointerCancelCapture={(event) => { annotationWorkspace.cancelPointer(event); handleRectanglePointerCancel(event); }}
+        onPointerCancelCapture={(event) => { selectClick.current = false; annotationWorkspace.cancelPointer(event); handleRectanglePointerCancel(event); }}
         onLostPointerCapture={(event) => { annotationWorkspace.cancelPointer(event); handleRectanglePointerCancel(event); }}
       >
         <Profiler
@@ -3017,12 +3098,14 @@ return (
           deleteKeyCode={null}
           multiSelectionKeyCode={null}
           selectionKeyCode={null}
+          panActivationKeyCode={annotationMode ? null : "Space"}
           selectionOnDrag={false}
           onlyRenderVisibleElements
           elevateEdgesOnSelect
         >
           <Background />
-          <AnnotationLayer annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked} />
+          <AnnotationLayer annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked} panThrough={annotationPan} />
+          <AnnotationTooltip annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked} />
           <Controls showInteractive={!annotationMode} />
         </ReactFlow>
       </Profiler>

@@ -163,7 +163,7 @@ test("undersized drawing, pointer cancellation and Escape cancellation create no
 test("mode changes cancel previews, clear selection and preserve already committed edits", async () => {
   await run(() => current.switchMode("annotation"));
   await selectRectangle();
-  await run(() => current.setRectangleStyle({ color: "purple" }));
+  await run(() => current.updateShape({ color: "purple" }));
   await run(() => current.begin(pointer(120, 90), rectangle.id));
   await run(() => current.move(pointer(220, 190)));
   await run(() => current.switchMode("graph"));
@@ -219,7 +219,7 @@ test("single-pointer gesture ignores other pointer events and repeated pointer d
 test("selection and properties target a single rectangle and retain ID/order", async () => {
   await run(() => current.switchMode("annotation"));
   await selectRectangle();
-  await run(() => current.setRectangleStyle({ color: "red", fill: "none", border: "thick" }));
+  await run(() => current.updateShape({ color: "red", fill: "none", border: "thick" }));
   assert.equal(current.selectedId, rectangle.id);
   assert.deepEqual(annotations, [{ ...rectangle, color: "red", fill: "none", border: "thick" }, text]);
 });
@@ -264,7 +264,7 @@ test("persistence/graph locks block modes, gestures, styles and deletion", async
   await run(() => updateLocked(true));
   await run(() => current.switchMode("graph"));
   await run(() => current.setActiveTool("rectangle"));
-  await run(() => current.setRectangleStyle({ fill: "none" }));
+  await run(() => current.updateShape({ fill: "none" }));
   await run(() => current.requestDelete());
   assert.equal(await run(() => current.begin(pointer(100, 50), rectangle.id)), false);
   assert.equal(current.mode, "annotation");
@@ -437,4 +437,31 @@ test("Text edit cannot overlap gestures, delete confirmation or server locks", a
   await run(() => updateLocked(true));
   await run(() => current.editText(text.id));
   assert.equal(current.editor, null);
+});
+
+test("Ellipse shares shape creation, metadata, keyboard movement, resize and deletion", async () => {
+  await run(() => current.switchMode("annotation"));
+  await run(() => current.setActiveTool("ellipse"));
+  await run(() => current.begin(pointer(300, 250)));
+  await run(() => current.move(pointer(220, 190)));
+  assert.equal(current.preview?.kind, "ellipse");
+  assert.equal(annotations.length, 2);
+  await run(() => current.end(pointer(220, 190)));
+  const shape = annotations[2];
+  assert.equal(shape.kind, "ellipse");
+  assert.deepEqual([shape.x, shape.y, shape.width, shape.height], [60, 70, 40, 30]);
+  assert.equal(current.tool, "select");
+  await run(() => current.updateShape({ name: "  Group\u0085 ", description: "  Line 1\nLine 2  " }));
+  assert.equal(await run(() => current.moveSelectedShape(10, -50)), true);
+  await run(() => current.begin(pointer(320, 150), shape.id, "se"));
+  await run(() => current.end(pointer(360, 190)));
+  assert.deepEqual(annotations[2], { ...shape, x: 70, y: 20, width: 60, height: 50,
+    name: "Group", description: "Line 1\nLine 2" });
+  await run(() => updateLocked(true));
+  assert.equal(await run(() => current.moveSelectedShape(10, 0)), false);
+  await run(() => updateLocked(false));
+  await run(() => current.requestDelete());
+  assert.equal(current.deleteTarget?.id, shape.id);
+  await run(() => current.confirmDelete());
+  assert.deepEqual(annotations, baseline.annotations);
 });

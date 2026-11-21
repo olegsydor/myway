@@ -1,20 +1,20 @@
 import { GRAPH_APPEARANCE } from "./graphAppearance.ts";
-import { RECTANGLE_MIN_SIZE, normalizeRectangle, type RectangleAnnotation, type TextAnnotation } from "../shared/annotations.ts";
+import { RECTANGLE_MIN_SIZE, normalizeRectangle, type ShapeAnnotation, type TextAnnotation } from "../shared/annotations.ts";
 import type { CSSProperties } from "react";
 
 export type WorkspaceMode = "graph" | "annotation";
-export type AnnotationTool = "select" | "rectangle" | "text";
+export type AnnotationTool = "select" | "rectangle" | "ellipse" | "text";
 export type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 export const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 export interface Point { x: number; y: number }
 export interface RectangleGesture {
   kind: "draw" | "move" | "resize";
   start: Point;
-  original: RectangleAnnotation;
+  original: ShapeAnnotation;
   handle?: ResizeHandle;
 }
 
-export function rectanglePreview(gesture: RectangleGesture, point: Point): RectangleAnnotation | null {
+export function rectanglePreview(gesture: RectangleGesture, point: Point): ShapeAnnotation | null {
   const { original, start, kind, handle } = gesture;
   if (![point.x, point.y, start.x, start.y].every(Number.isFinite)) return null;
   const dx = point.x - start.x, dy = point.y - start.y;
@@ -43,7 +43,7 @@ export function rectanglePreview(gesture: RectangleGesture, point: Point): Recta
   return { ...original, ...geometry };
 }
 
-export function finishRectangle(gesture: RectangleGesture, point: Point): RectangleAnnotation | null {
+export function finishRectangle(gesture: RectangleGesture, point: Point): ShapeAnnotation | null {
   const preview = rectanglePreview(gesture, point);
   if (!preview) return null;
   if (gesture.kind === "draw" && !normalizeRectangle(gesture.start, point)) return null;

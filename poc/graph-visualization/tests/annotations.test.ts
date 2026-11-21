@@ -22,7 +22,7 @@ test("annotation snapshots preserve order, precision and multiline content with 
 for (const change of [
   { id: "bad" }, { id: 7 }, { x: "2" }, { y: true }, { x: NaN }, { y: Infinity },
   { width: 0 }, { height: -1 }, { height: Infinity }, { width: "20" }, { width: null },
-  { color: "pink" }, { fill: "heavy" }, { border: "wide" }, { kind: "ellipse" },
+  { color: "pink" }, { fill: "heavy" }, { border: "wide" }, { kind: "polygon" },
   { node_id: 1 }, { text: "forbidden" }, { size: "small" },
 ]) {
   test(`rejects invalid rectangle ${JSON.stringify(change)}`, () => {
@@ -92,4 +92,15 @@ test("workspace dirty, restore and graph reconciliation preserve annotation inde
   assert.equal(workspaceIsDirty([], [rectangle, text], saved), false);
   assert.equal(workspaceIsDirty([...nodes, { data: { originalId: 2 }, position: { x: 0, y: 0 } }], [rectangle, text], saved), true);
   assert.deepEqual(restoreWorkspace([], saved, []).annotations, [rectangle, text]);
+});
+
+test("shape metadata is optional, canonical, Unicode limited and kind specific", () => {
+  const shape = { ...rectangle, kind: "ellipse", name: "  Week\r\n21 ", description: " \u0085 " };
+  assert.deepEqual(annotationSnapshot([shape]), [{ ...rectangle, kind: "ellipse", name: "Week 21" }]);
+  const longName = "🌻".repeat(200);
+  assert.doesNotThrow(() => annotationSnapshot([{ ...shape, name: longName }]));
+  for (const row of [{ ...shape, name: longName + "a" }, { ...shape, name: "\0" },
+    { ...shape, description: "\ud800" }, { ...text, description: null }]) {
+    assert.throws(() => annotationSnapshot([row]));
+  }
 });

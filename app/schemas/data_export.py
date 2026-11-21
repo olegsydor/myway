@@ -28,7 +28,7 @@ class ExportEdge(ExportRecord):
 
 
 class DataExport(BaseModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     exported_at: datetime
     nodes: list[ExportNode]
     edges: list[ExportEdge]

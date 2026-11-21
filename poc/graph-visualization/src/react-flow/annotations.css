@@ -49,3 +49,72 @@
 .workspace-annotation[data-annotation-tool="text"] .react-flow__pane,
 .workspace-annotation[data-annotation-tool="text"] .annotation-rectangle-hit,
 .workspace-annotation[data-annotation-tool="text"] .annotation-text-hit { cursor: text; }
+
+.annotation-rectangle-visual.annotation-shape--ellipse,
+.annotation-selection.annotation-shape--ellipse { border-radius: 50%; }
+.annotation-rectangle-hit.annotation-shape--ellipse { clip-path: ellipse(50% 50% at 50% 50%); }
+.workspace-annotation[data-annotation-tool="ellipse"] :is(.react-flow__pane, .annotation-rectangle-hit, .annotation-text-hit),
+.workspace-annotation[data-annotation-tool="rectangle"] .annotation-text-hit { cursor: crosshair; }
+.annotation-shape-name {
+  position: absolute;
+  inset: 10px 8px auto 13px;
+  color: var(--mw-text);
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.annotation-rectangle-visual { overflow: hidden; }
+.annotation-shape--ellipse .annotation-shape-name {
+  inset: 10% 20% auto;
+  text-align: center;
+}
+.annotation-properties [data-annotation-metadata] :is(input, textarea) {
+  font: inherit;
+  line-height: 1.45;
+  color: var(--mw-text);
+  background: var(--mw-panel);
+  border: 1px solid var(--mw-input-border);
+  border-radius: var(--mw-radius-control);
+  padding: 7px 9px;
+}
+.annotation-properties [data-annotation-metadata] textarea { resize: vertical; }
+.annotation-shape-picker { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.annotation-shape-picker select { width: 100%; }
+.annotation-metadata-tooltip {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--mw-border);
+  background: var(--mw-subtle);
+  color: var(--mw-text);
+  box-shadow: 0 2px 8px rgb(39 53 72 / 7%);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.annotation-metadata-tooltip strong { display: block; font-weight: 500; }
+.annotation-metadata-tooltip > div { margin-top: 3px; color: var(--mw-secondary); }
+.annotation-metadata-tooltip[data-clipped="true"]::after {
+  position: absolute;
+  bottom: 0;
+  inset-inline: 0;
+  padding: 4px 12px;
+  display: block;
+  background: var(--mw-subtle);
+  color: var(--mw-secondary);
+  content: "… Full text in properties";
+}
+
+.workspace-annotation[data-annotation-pan="true"] :is(.react-flow__pane, .annotation-rectangle-hit, .annotation-text-hit) {
+  cursor: grab;
+}
