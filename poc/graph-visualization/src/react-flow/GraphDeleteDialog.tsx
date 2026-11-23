@@ -1,3 +1,4 @@
+import { focusDeleteDialogAction } from "./deleteDialogKeyboard";
 import { useEffect, useRef } from "react";
 import type { DeleteState } from "./graphDeletion";
 
@@ -6,6 +7,7 @@ export function GraphDeleteDialog({ state, onCancel, onConfirm, onRetry }: {
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
   const open = Boolean(state.target);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -24,11 +26,12 @@ export function GraphDeleteDialog({ state, onCancel, onConfirm, onRetry }: {
       ? "The server has deleted this element. The loaded graph needs to be refreshed."
       : state.target?.description}</p>
     {state.error && <p className="error" role="alert">{state.error}</p>}
-    <div className="layout-dialog-actions">
+    <div className="layout-dialog-actions" onKeyDown={event =>
+      focusDeleteDialogAction(event, state.busy, cancelRef.current, deleteRef.current)}>
       <button ref={cancelRef} type="button" disabled={state.busy} onClick={onCancel}>
         {informational ? "Close" : "Cancel"}
       </button>
-      {!informational && <button className="graph-delete-confirm" type="button"
+      {!informational && <button ref={deleteRef} className="graph-delete-confirm" type="button"
         disabled={state.busy} onClick={onConfirm}>{state.busy ? "Deleting…" : "Delete"}</button>}
       {state.deleted && <button type="button" disabled={state.busy} onClick={onRetry}>
         {state.busy ? "Refreshing…" : "Retry refresh"}
