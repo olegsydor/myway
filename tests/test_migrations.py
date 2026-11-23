@@ -54,8 +54,20 @@ async def test_clean_and_legacy_migrations():
                 rejected = migrate('head', '-x', f'verified_initial_layout=1:{lid}')
                 assert rejected.returncode != 0 and 'workspace is not empty' in rejected.stderr
                 options = ('-x', 'verified_initial_layout=5:8')
-            result=migrate('head', *options);assert result.returncode==0,result.stderr
-            assert await connection.fetchval('SELECT version_num FROM alembic_version')=='a21a01e4b901'
+            result=migrate('a21a01e4b901', *options);assert result.returncode==0,result.stderr
+            result=migrate('head');assert result.returncode==0,result.stderr
+            assert await connection.fetchval('SELECT count(*) FROM entitlement_grants') == 0
+            grant_owner = await connection.fetchval(
+                "INSERT INTO users(email,email_normalized,display_name) "
+                "VALUES('grant@example.com','grant@example.com','Grant owner') RETURNING id"
+            )
+            await connection.execute(
+                "INSERT INTO entitlement_grants(user_id,plan_code,source,starts_at) "
+                "VALUES($1,'pro','manual',clock_timestamp())", grant_owner,
+            )
+            await connection.execute('DELETE FROM users WHERE id=$1', grant_owner)
+            assert await connection.fetchval('SELECT count(*) FROM entitlement_grants') == 0
+            assert await connection.fetchval('SELECT version_num FROM alembic_version')=='a22a01e4b901'
             if scenario=='legacy':
                 for table,rows in before.items():
                     if table == 'layouts':

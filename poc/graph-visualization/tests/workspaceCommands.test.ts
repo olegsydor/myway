@@ -32,3 +32,16 @@ test('clean workspace cannot save; Fit never invokes persistence or arrangement'
   assert.equal(commands.save.enabled, false); commands.save.run(); commands.fit.run();
   assert.deepEqual(calls, ['fit']);
 });
+
+test("known node limit disables the shared New Node command without blocking edge creation", () => {
+  const focused: string[] = [];
+  const commands = workspaceCommands({
+    annotationMode: false, blocked: false, locked: false, dirty: true, nodeLimitReason: "Free node limit reached",
+  }, {
+    save() {}, focusForm: form => focused.push(form), arrange() {}, fit() {}, reset() {},
+  });
+  assert.equal(commands.createNode.enabled, false);
+  commands.createNode.run();
+  commands.createEdge.run();
+  assert.deepEqual(focused, ["createEdge"]);
+});

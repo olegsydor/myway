@@ -1,3 +1,4 @@
+import { focusDeleteDialogAction } from "./deleteDialogKeyboard";
 import { useEffect, useRef, useState } from "react";
 import { ANNOTATION_COLORS } from "./annotationStyles";
 import type { AnnotationWorkspace } from "./useAnnotationWorkspace";
@@ -63,14 +64,16 @@ function ShapeMetadataField({ field, value, onUpdate }: {
 
 export type AnnotationDragMode = "move" | "pan";
 
-export function AnnotationControls({ annotations, workspace, locked, dragMode, onDragModeChange }: {
+export function AnnotationControls({ annotations, workspace, locked, planCeiling, dragMode, onDragModeChange }: {
   annotations: Annotation[];
   workspace: AnnotationWorkspace;
   locked: boolean;
+  planCeiling?: number | null;
   dragMode?: AnnotationDragMode;
   onDragModeChange?: (mode: AnnotationDragMode) => void;
 }) {
   if (workspace.mode !== "annotation") return null;
+  const atLimit = planCeiling != null && annotations.length >= planCeiling;
   const shape = workspace.selected && workspace.selected.kind !== "text" ? workspace.selected : null;
   const shapes = annotations.filter((item): item is ShapeAnnotation => item.kind !== "text");
   const label = shape && shapeLabel(shape.kind);
@@ -81,13 +84,14 @@ export function AnnotationControls({ annotations, workspace, locked, dragMode, o
       <div className="annotation-button-row" role="group" aria-label="Annotation tools">
         <button type="button" aria-pressed={workspace.tool === "select"} disabled={locked || Boolean(workspace.deleteTarget)}
           onClick={() => workspace.setActiveTool("select")}>Select</button>
-        <button type="button" aria-pressed={workspace.tool === "rectangle"} disabled={locked || Boolean(workspace.deleteTarget)}
+        <button type="button" aria-pressed={workspace.tool === "rectangle"} disabled={atLimit || locked || Boolean(workspace.deleteTarget)}
           onClick={() => workspace.setActiveTool("rectangle")}>Rectangle</button>
-        <button type="button" aria-pressed={workspace.tool === "ellipse"} disabled={locked || Boolean(workspace.deleteTarget)}
+        <button type="button" aria-pressed={workspace.tool === "ellipse"} disabled={atLimit || locked || Boolean(workspace.deleteTarget)}
           onClick={() => workspace.setActiveTool("ellipse")}>Ellipse</button>
-        <button type="button" aria-pressed={workspace.tool === "text"} disabled={locked || Boolean(workspace.deleteTarget)}
+        <button type="button" aria-pressed={workspace.tool === "text"} disabled={atLimit || locked || Boolean(workspace.deleteTarget)}
           onClick={() => workspace.setActiveTool("text")}>Text</button>
       </div>
+      {planCeiling != null && <small>{annotations.length} / {planCeiling}{atLimit && " · Annotation limit reached"}</small>}
       <small>{workspace.editor ? "Enter adds a line break. Click outside to finish; Escape cancels." : workspace.tool === "rectangle"
         ? "Drag to draw a shape. Escape cancels." : workspace.tool === "ellipse" ? "Drag to draw an ellipse. Escape cancels."
         : workspace.tool === "text" ? "Click to place text. Escape cancels."
@@ -169,14 +173,8 @@ export function AnnotationDeleteDialog({ workspace, locked }: { workspace: Annot
     <h2 id="annotation-delete-title">Delete {label}</h2>
     <p>{workspace.deleteTarget?.kind === "text" ? `Remove “${[...workspace.deleteTarget.text].slice(0, 80).join("")}${[...workspace.deleteTarget.text].length > 80 ? "…" : ""}” from the layout?`
       : `Remove this ${label} from the layout?`} Save layout to keep the change.</p>
-    <div className="layout-dialog-actions" onKeyDown={(event) => {
-      if (locked || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      event.preventDefault();
-      event.stopPropagation();
-      const next = event.key === "ArrowLeft" ? cancelRef.current : deleteRef.current;
-      next?.focus();
-    }}>
+    <div className="layout-dialog-actions" onKeyDown={event =>
+      focusDeleteDialogAction(event, locked, cancelRef.current, deleteRef.current)}>
       <button ref={cancelRef} type="button" disabled={locked} onClick={workspace.cancelDelete}>Cancel</button>
       <button ref={deleteRef} className="mw-action-danger" type="button" disabled={locked} onClick={workspace.confirmDelete}>Delete</button>
     </div>

@@ -3,8 +3,9 @@ from collections.abc import Iterable
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import LayoutAnnotation, Layout, LayoutNodePosition, Node, User
+from app.models import LayoutAnnotation, Layout, LayoutNodePosition, Node
 from app.schemas.layout import LayoutCreate, LayoutDetail, LayoutRead, LayoutUpdate, Position, PositionSnapshot, WorkspaceSnapshot
+from app.services.entitlements import check_annotation_growth, check_layout_creation, lock_owner
 
 
 class LayoutError(Exception):
@@ -58,12 +59,6 @@ def build_layout_detail(
     )
 
 
-async def lock_owner(session: AsyncSession, user_id: int) -> None:
-    # Serialize layout mutations, including first/default creation.
-    # FOR UPDATE also conflicts with the FK key-share lock acquired by node inserts.
-    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
-
-
 async def validate_snapshot(session: AsyncSession, user_id: int, data: PositionSnapshot) -> None:
     # Lock existing graph nodes against deletion until this save commits.
     node_ids = set((await session.execute(select(Node.id).where(
@@ -108,6 +103,7 @@ async def make_default(session: AsyncSession, user_id: int, layout: Layout) -> N
 
 async def create_layout(session: AsyncSession, user_id: int, data: LayoutCreate) -> LayoutDetail:
     await lock_owner(session, user_id)
+    await check_layout_creation(session, user_id, len(data.annotations))
     await validate_snapshot(session, user_id, data)
     existing = await list_layouts(session, user_id)
     # Insert without default first, then transfer default status if requested.
@@ -145,6 +141,7 @@ async def replace_positions(session: AsyncSession, user_id: int, layout_id: int,
 async def replace_workspace(session: AsyncSession, user_id: int, layout_id: int, data: WorkspaceSnapshot) -> LayoutDetail:
     await lock_owner(session, user_id)
     layout = await get_layout(session, user_id, layout_id)
+    await check_annotation_growth(session, user_id, len(data.annotations), layout_id)
     await validate_snapshot(session, user_id, data)
     await write_positions(session, user_id, layout_id, data)
     await write_annotations(session, user_id, layout_id, data)

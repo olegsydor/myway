@@ -1,3 +1,4 @@
+import { layoutLimitMessage, planLimitMessage, useEntitlements } from "../auth/entitlements.ts";
 import { readActiveLayout, writeActiveLayout, removeActiveLayout, removeViewport } from "./workspacePreferences.ts";
 import { selectStartupLayout } from "./startupLayout.ts";
 import { annotationSnapshot, type Annotation } from "../shared/annotations.ts";
@@ -51,6 +52,10 @@ export function usePersistentLayout(options: Options) {
   const [startupReady, setStartupReady] = useState(false);
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [active, setActive] = useState<SavedLayout | null>(null);
+  const { plan, refresh: refreshPlan } = useEntitlements();
+  const layoutCreationBlocked = plan && plan.usage.layouts >= plan.limits.layouts
+    ? layoutLimitMessage(plan.limits.layouts) : "";
+  const initialSaveBlocked = !active && Boolean(layoutCreationBlocked);
   const [saved, setSaved] = useState<WorkspaceSnapshot | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -388,7 +393,9 @@ useEffect(() => {
       await action();
       return alive.current;
     } catch (cause) {
-      if (alive.current) setError(cause instanceof Error ? cause.message : "Layout operation failed");
+      const limit = planLimitMessage(cause);
+      if (limit) refreshPlan();
+      if (alive.current) setError(limit ?? (cause instanceof Error ? cause.message : "Layout operation failed"));
       return false;
     } finally {
       inFlight.current = false;
@@ -425,6 +432,8 @@ useEffect(() => {
       ? await saveLayout(active.id, positions, annotations)
       : await createInitialLayout(positions, annotations);
 
+    if (!active) refreshPlan();
+
     // Server save succeeded. Invalidate the old local recovery.
     await clearLocalRecovery(previousLayoutId);
 
@@ -432,6 +441,7 @@ useEffect(() => {
   }
 
   function save(): Promise<boolean> {
+    if (initialSaveBlocked) return Promise.resolve(false);
     return operate("saving", async () => {
       await persistCurrent();
       if (alive.current) setNotice("Layout saved");
@@ -439,11 +449,13 @@ useEffect(() => {
   }
 
   function saveAsNew(name: string): Promise<boolean> {
+    if (layoutCreationBlocked) return Promise.resolve(false);
     return operate("saving", async () => {
       const previousLayoutId = active?.id ?? null;
 
       const workspace = workspaceSnapshot(latest.current.nodes, latest.current.annotations);
       const accepted = await createLayout(name.trim(), workspace.positions, workspace.annotations);
+      refreshPlan();
 
       await clearLocalRecovery(previousLayoutId);
 
@@ -459,7 +471,7 @@ useEffect(() => {
     id: number,
     choice: "save" | "discard" | "cancel",
   ): Promise<boolean> {
-    if (choice === "cancel") return Promise.resolve(false);
+    if (choice === "cancel" || (choice === "save" && initialSaveBlocked)) return Promise.resolve(false);
     if (id === active?.id) return Promise.resolve(true);
 
     return operate("switching", async () => {
@@ -525,6 +537,7 @@ useEffect(() => {
       const deletedLayoutId = active.id;
 
       await deleteLayout(deletedLayoutId);
+      refreshPlan();
       await clearLocalRecovery(deletedLayoutId);
 
       if (alive.current) {
@@ -667,13 +680,14 @@ async function discardRecovery(): Promise<void> {
       await controller.flush(current.recoveryScope, active?.id ?? null);
     },
     active, layouts, dirty, phase, startupReady, cameraTransition,
+    savedAnnotationCount: saved?.annotations.length ?? 0,
     recoveryOffer,
     recoveryBusy,
     restoreRecovery,
     discardRecovery,
     error, notice, blocked,
     locked: phase !== "ready", isLocked, save, discard, saveAsNew, switchTo, rename, setDefault, deleteActive,
-    canDelete, canDiscard: active !== null && dirty && !blocked,
+    layoutCreationBlocked, initialSaveBlocked, canDelete, canDiscard: active !== null && dirty && !blocked,
     clearError: () => setError(""),
     retry: () => {
       if (!inFlight.current) {

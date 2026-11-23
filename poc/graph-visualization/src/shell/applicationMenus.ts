@@ -6,7 +6,8 @@ export interface ShellCommands {
 export function applicationMenus(layout: MenuItem[], commands: ShellCommands, help: () => void,
   exportDiagnostics?: () => void, toolsPanel?: { open: boolean; toggle: () => void }): MenuDefinition[] {
   const item = (id: keyof ShellCommands, label: string, shortcut?: string): MenuItem => ({
-    id, label, shortcut, disabled: !commands[id].enabled, run: commands[id].run,
+    id, label: commands[id].disabledReason ? `${label} · ${commands[id].disabledReason}` : label,
+    shortcut, disabled: !commands[id].enabled, run: commands[id].run,
   });
   return [
     { id: 'layout', label: 'Layout', items: layout },

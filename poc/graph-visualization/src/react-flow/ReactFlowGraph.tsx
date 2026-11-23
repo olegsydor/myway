@@ -1,3 +1,4 @@
+import { nodeLimitMessage, planLimitMessage, useEntitlements } from "../auth/entitlements";
 import { registerWorkspace } from "../auth/workspaceLifecycle";
 import { GRAPH_APPEARANCE } from "./graphAppearance.ts";
 import { useWorkspaceTitle } from "./useWorkspaceTitle";
@@ -398,10 +399,15 @@ useEffect(() => {
     useState<SelectionRectangle | null>(null);
 
 
+  const { plan, refresh: refreshPlan } = useEntitlements();
+  const nodeLimit = plan?.limits.nodes ?? null;
+  const nodeLimitReached = nodeLimit !== null && (plan?.usage.nodes ?? 0) >= nodeLimit;
+  const annotationLimit = plan?.limits.annotations_per_layout ?? null;
+  const annotationCeiling = annotationLimit === null ? null : Math.max(annotationLimit, layout.savedAnnotationCount);
   const annotationLocked = layout.locked || !layout.startupReady || graphBusy ||
     nodes.some((node) => node.dragging) || Boolean(deleteState.target);
   const annotationWorkspace = useAnnotationWorkspace({
-    annotations, setAnnotations, locked: annotationLocked,
+    annotations, setAnnotations, locked: annotationLocked, creationLimit: annotationCeiling ?? undefined,
     toGraph: (point) => instanceRef.current?.screenToFlowPosition(point, { snapToGrid: false }) ?? point,
     onBusy: setAnnotationBusy,
     onEnterAnnotation: () => {
@@ -1273,6 +1279,7 @@ const handleNodesChange = useCallback(
     onState: setDeleteState,
     onMessage: setActionMessage,
     onDeleted: target => {
+      if (target.kind === "node") refreshPlan();
       ordinaryTarget.current = null;
       setSelectedNodeForEdit(null);
       setSelectedEdgeForEdit(null);
@@ -1869,7 +1876,7 @@ const handleNodesChange = useCallback(
   const formActive = keyboardForm || Boolean(document.activeElement?.closest(
     ".react-flow-edit-panel, [data-graph-create]"));
   const commands = useWorkspaceCommands({
-    annotationMode, blocked: layout.blocked, locked: layout.locked, dirty: layout.dirty, saveProtected: formActive || Boolean(annotationWorkspace.editor), ready: flowReady && layout.startupReady,
+    annotationMode, nodeLimitReason: nodeLimitReached ? "Free node limit reached" : undefined, blocked: layout.blocked, locked: layout.locked, dirty: layout.dirty && !layout.initialSaveBlocked, saveProtected: formActive || Boolean(annotationWorkspace.editor), ready: flowReady && layout.startupReady,
   }, {
     save: () => {
       if (document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]') ||
@@ -1877,7 +1884,10 @@ const handleNodesChange = useCallback(
         setActionMessage("Finish or cancel the current operation first."); return;
       }
       return layout.save();
-    }, focusForm, arrange: name => runLayout(name), reset: () => resetHighlighting(),
+    }, focusForm, arrange: name => runLayout(name), reset: () => {
+      setManualGroup(null);
+      resetHighlighting();
+    },
     fit: () => { void fitCamera({ padding: 0.1, duration: 300 }); },
   });
 
@@ -2048,7 +2058,7 @@ const handleNodesChange = useCallback(
   }, [graphData, setEdges, setNodes]);
 
   async function handleCreateNode() {
-    if (annotationMode || layout.isLocked()) return;
+    if (nodeLimitReached || annotationMode || layout.isLocked()) return;
     const name = newNodeName.trim();
     const nodeTypeId = Number(newNodeTypeId);
 
@@ -2074,6 +2084,7 @@ const handleNodesChange = useCallback(
         properties,
       });
 
+      refreshPlan();
       await onGraphChanged();
 
       setNewNodeName("");
@@ -2081,11 +2092,9 @@ const handleNodesChange = useCallback(
       setNewNodeProperties([]);
       setActionMessage(`Node created: ${name}`);
     } catch (createError) {
-      setActionMessage(
-        createError instanceof Error
-          ? createError.message
-          : "Failed to create Node",
-      );
+      const limit = planLimitMessage(createError);
+      if (limit) refreshPlan();
+      setActionMessage(limit ?? (createError instanceof Error ? createError.message : "Failed to create Node"));
     } finally {
       setIsCreatingNode(false);
     }
@@ -2214,10 +2223,11 @@ return (
         <div className="react-flow-toolbar">
         <LayoutMessages layout={layout} onRefreshGraph={refreshGraphForLayout} />
         <AnnotationControls annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked}
-          dragMode={annotationDragMode} onDragModeChange={setAnnotationDragMode} />
+          planCeiling={annotationCeiling} dragMode={annotationDragMode} onDragModeChange={setAnnotationDragMode} />
         <fieldset className="graph-crud-controls" hidden={annotationMode} disabled={annotationMode || annotationBusy}>
         <div data-graph-create ref={formSections.createNode}>
           <strong>Create Node</strong>
+          {nodeLimitReached && <p>{nodeLimitMessage(nodeLimit)}</p>}
           <label>
             Type{" "}
             <select
@@ -2321,7 +2331,7 @@ return (
           <button className="mw-action-primary"
             type="button"
             onClick={() => void handleCreateNode()}
-            disabled={layout.locked || isCreatingNode || availableNodeTypes.length === 0}
+            disabled={nodeLimitReached || layout.locked || isCreatingNode || availableNodeTypes.length === 0}
           >
             {isCreatingNode ? "Creating…" : "Add Node"}
           </button>

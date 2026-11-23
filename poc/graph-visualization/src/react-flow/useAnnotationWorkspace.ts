@@ -6,6 +6,7 @@ interface Options {
   annotations: Annotation[];
   setAnnotations: Dispatch<SetStateAction<Annotation[]>>;
   locked: boolean;
+  creationLimit?: number;
   toGraph: (point: Point) => Point;
   onBusy: (busy: boolean) => void;
   onEnterAnnotation: () => void;
@@ -68,8 +69,12 @@ export function useAnnotationWorkspace(options: Options) {
     modeRef.current = next;
     setMode(next);
   }
+  function creationLimit() {
+    return Math.min(ANNOTATION_LIMIT, latest.current.creationLimit ?? ANNOTATION_LIMIT);
+  }
   function setActiveTool(next: AnnotationTool) {
     if (latest.current.locked || deleteRef.current || modeRef.current !== "annotation") return;
+    if (next !== "select" && latest.current.annotations.length >= creationLimit()) return;
     if (!commitText()) return;
     cancel(); chooseTool(next); setError("");
   }
@@ -95,6 +100,11 @@ export function useAnnotationWorkspace(options: Options) {
     const draft = editorRef.current;
     if (!draft) return true;
     if (composing.current || latest.current.locked) return false;
+    if (draft.isNew && latest.current.annotations.length >= creationLimit()) {
+      closeEditor(); chooseTool("select");
+      setError(`This layout has reached its limit of ${creationLimit()} annotations.`);
+      return true;
+    }
     try {
       annotationSnapshot([draft.annotation]);
     } catch {
@@ -132,8 +142,8 @@ export function useAnnotationWorkspace(options: Options) {
     const start = current.toGraph({ x: event.clientX, y: event.clientY });
     if (toolRef.current === "text") {
       event.preventDefault(); event.stopPropagation();
-      if (current.annotations.length >= ANNOTATION_LIMIT) {
-        setError(`A layout can contain at most ${ANNOTATION_LIMIT} annotations.`); chooseTool("select"); return true;
+      if (current.annotations.length >= creationLimit()) {
+        setError(`A layout can contain at most ${creationLimit()} annotations.`); chooseTool("select"); return true;
       }
       openEditor({ id: crypto.randomUUID(), kind: "text", x: start.x, y: start.y, text: "", color: "gray", size: "medium" }, true);
       return true;
@@ -141,8 +151,8 @@ export function useAnnotationWorkspace(options: Options) {
     let original: Annotation;
     let kind: RectangleGesture["kind"];
     if (toolRef.current === "rectangle" || toolRef.current === "ellipse") {
-      if (current.annotations.length >= ANNOTATION_LIMIT) {
-        setError(`A layout can contain at most ${ANNOTATION_LIMIT} annotations.`); chooseTool("select");
+      if (current.annotations.length >= creationLimit()) {
+        setError(`A layout can contain at most ${creationLimit()} annotations.`); chooseTool("select");
         event.preventDefault(); event.stopPropagation(); return true;
       }
       original = { id: crypto.randomUUID(), kind: toolRef.current, x: start.x, y: start.y,
@@ -185,6 +195,10 @@ export function useAnnotationWorkspace(options: Options) {
     const point = latest.current.toGraph({ x: event.clientX, y: event.clientY });
     const accepted = active.kind === "move-text" ? textMovePreview(active.original, active.start, point) : finishRectangle(active, point);
     release(); chooseTool("select");
+    if (active.kind === "draw" && latest.current.annotations.length >= creationLimit()) {
+      setError(`This layout has reached its limit of ${creationLimit()} annotations.`);
+      return true;
+    }
     if (accepted && !latest.current.locked) {
       latest.current.setAnnotations((annotations) => active.kind === "draw"
         ? annotationSnapshot([...annotations, accepted])

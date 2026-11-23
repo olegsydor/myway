@@ -1,3 +1,4 @@
+import { planLimitMessage, type PlanViolation } from "./entitlements.ts";
 import { ApiError, identityGeneration, request, StaleRequest } from "./http.ts";
 
 const maxImportBytes = 64 * 1024 * 1024;
@@ -17,7 +18,11 @@ export interface RestoreCounts extends ImportCounts {
   annotations: number;
 }
 
-export function previewRestore(file: File): Promise<RestoreCounts> {
+export interface RestorePreview extends RestoreCounts {
+  eligibility: { allowed: boolean; violations: PlanViolation[] };
+}
+
+export function previewRestore(file: File): Promise<RestorePreview> {
   return uploadExport("/api/restore/preview", file);
 }
 
@@ -35,6 +40,8 @@ async function uploadExport<T>(path: string, file: File): Promise<T> {
 }
 
 export function importErrorMessage(error: unknown, operation = "import"): string {
+  const limit = planLimitMessage(error, true);
+  if (limit) return limit;
   if (error instanceof ApiError) {
     if (error.status === 409 && error.code === "import_requires_empty_account") {
       return "Import is only available for an empty account.";

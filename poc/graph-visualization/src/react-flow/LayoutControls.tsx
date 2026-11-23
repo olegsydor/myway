@@ -1,3 +1,4 @@
+import { focusDeleteDialogAction } from "./deleteDialogKeyboard";
 import type { Command } from "./workspaceCommands";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { layoutMenu, layoutStatus, type LayoutController, type LayoutDialog } from "./layoutMenu";
@@ -13,6 +14,8 @@ export function LayoutControls({ layout, saveCommand, children }: {
   const [validation, setValidation] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const confirmDeleteRef = useRef<HTMLButtonElement>(null);
   const [returnFocus, setReturnFocus] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -22,6 +25,8 @@ export function LayoutControls({ layout, saveCommand, children }: {
       if (dialog.kind === "new" || dialog.kind === "rename") {
         nameRef.current?.focus();
         nameRef.current?.select();
+      } else if (dialog.kind === "delete") {
+        cancelDeleteRef.current?.focus();
       }
     } else if (!dialog && element?.open) {
       element.close();
@@ -71,10 +76,11 @@ export function LayoutControls({ layout, saveCommand, children }: {
             <input ref={nameRef} id="layout-name" value={name} maxLength={100} required disabled={layout.blocked}
               onChange={(event) => { setName(event.target.value); setValidation(""); }} />
             {dialog.kind === "new" && <p>The current arrangement will be saved as a new layout. The previous saved layout stays unchanged.</p>}
+            {dialog.kind === "new" && layout.layoutCreationBlocked && <p>{layout.layoutCreationBlocked}</p>}
             {validation && <p className="error" role="alert">{validation}</p>}
             {layout.error && <p className="error" role="alert">{layout.error}</p>}
             <div className="layout-dialog-actions">
-              <button className="mw-action-primary" type="submit" disabled={layout.blocked}>{layout.locked ? "Saving…" : dialog.kind === "new" ? "Create layout" : "Rename"}</button>
+              <button className="mw-action-primary" type="submit" disabled={layout.blocked || (dialog.kind === "new" && Boolean(layout.layoutCreationBlocked))}>{layout.locked ? "Saving…" : dialog.kind === "new" ? "Create layout" : "Rename"}</button>
               <button type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>
             </div>
           </form>
@@ -82,7 +88,7 @@ export function LayoutControls({ layout, saveCommand, children }: {
           <p>Open “{dialog.name}”? {layout.dirty ? "The current layout has unsaved changes." : "The current layout is saved."}</p>
           {layout.error && <p className="error" role="alert">{layout.error}</p>}
           <div className="layout-dialog-actions">
-            <button className="mw-action-primary" type="button" disabled={layout.blocked || !layout.dirty} onClick={() => void finishSwitch("save")}>Save and switch</button>
+            <button className="mw-action-primary" type="button" disabled={layout.blocked || !layout.dirty || layout.initialSaveBlocked} onClick={() => void finishSwitch("save")}>Save and switch</button>
             <button type="button" disabled={layout.blocked} onClick={() => void finishSwitch("discard")}>{layout.dirty ? "Discard and switch" : "Open layout"}</button>
             <button type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>
           </div>
@@ -91,11 +97,12 @@ export function LayoutControls({ layout, saveCommand, children }: {
           {layout.dirty && <p>Unsaved changes to this arrangement will also be discarded. Use Save as new layout first if you want to keep them.</p>}
           <p>The default layout will open after deletion.</p>
           {layout.error && <p className="error" role="alert">{layout.error}</p>}
-          <div className="layout-dialog-actions">
-            <button className="mw-action-danger" type="button" disabled={layout.blocked} onClick={() => {
+          <div className="layout-dialog-actions layout-delete-actions" onKeyDown={event =>
+            focusDeleteDialogAction(event, layout.blocked || layout.locked, cancelDeleteRef.current, confirmDeleteRef.current)}>
+            <button ref={cancelDeleteRef} type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>
+            <button ref={confirmDeleteRef} className="mw-action-danger" type="button" disabled={layout.blocked} onClick={() => {
               void layout.deleteActive().then((success) => { if (success) setDialog(null); });
             }}>{layout.dirty ? "Delete and discard changes" : "Delete layout"}</button>
-            <button type="button" disabled={layout.locked} onClick={() => setDialog(null)}>Cancel</button>
           </div>
         </> : null}
       </dialog>

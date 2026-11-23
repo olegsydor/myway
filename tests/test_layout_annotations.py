@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Layout, LayoutAnnotation, LayoutNodePosition, Node, User
+from app.models import EntitlementGrant, Layout, LayoutAnnotation, LayoutNodePosition, Node, User
 from app.dependencies.auth import get_current_user
 from app.main import app
 from tests.test_layouts_api import graph, create, snapshot  # noqa: F401
@@ -93,7 +93,7 @@ async def test_strict_text_validation(client, graph, changes):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_validation_and_limits(client, graph):
+async def test_snapshot_validation_and_limits(client, graph, db_session):
     saved = await create(client, graph, annotations=[rectangle()])
     path = f'/layouts/{saved["id"]}'
     duplicate = rectangle()
@@ -106,6 +106,10 @@ async def test_snapshot_validation_and_limits(client, graph):
     boundary = label()
     boundary["text"] = "я"*2000
     assert (await client.put(path+'/workspace', json={**snapshot(graph), "annotations": [boundary]*2000})).status_code == 422
+    from app.core.security import db_now
+    db_session.add(EntitlementGrant(user_id=graph["user_ids"][0], source="manual",
+                                    plan_code="pro", starts_at=await db_now(db_session)))
+    await db_session.commit()
     annotations = [dict(boundary, id=str(uuid4())) for _ in range(2000)]
     response = await client.put(path+'/workspace', json={**snapshot(graph), "annotations": annotations})
     assert response.status_code == 200, response.text

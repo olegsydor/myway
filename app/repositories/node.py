@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.node import Node
+from app.services.entitlements import check_node_growth, lock_owner
 
 
 async def create_node(
@@ -13,6 +14,7 @@ async def create_node(
     description: str | None = None,
     properties: dict | None = None,
 ) -> Node:
+    await check_node_growth(session, user_id)
     node = Node(
         user_id=user_id,
         node_type_id=node_type_id,
@@ -77,5 +79,6 @@ async def delete_node(
     *,
     node: Node,
 ) -> None:
+    await lock_owner(session, node.user_id)
     await session.delete(node)
     await session.commit()

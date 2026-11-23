@@ -1,5 +1,6 @@
+import { EntitlementContext, fetchEntitlements, formatPlanViolation, type Entitlements } from "./entitlements.ts";
 import { downloadDataExport } from "./dataExport";
-import { importDataFile, importErrorMessage, previewRestore, restoreWorkspace, type RestoreCounts } from "./dataImport";
+import { importDataFile, importErrorMessage, previewRestore, restoreWorkspace, type RestorePreview } from "./dataImport";
 import { AccountSettings, type AccountSection } from "./AccountSettings";
 import { clearWorkspaceRecovery } from "../react-flow/layoutRecoveryController";
 import { layoutRecoveryScope } from "../react-flow/layoutRecoveryScope";
@@ -62,9 +63,22 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
   const [deletionPassword, setDeletionPassword] = useState("");
   const [leaving, setLeaving] = useState(false);
-  const [restorePreview, setRestorePreview] = useState<{ file: File; counts: RestoreCounts } | null>(null);
-  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [planSnapshot, setPlanSnapshot] = useState<{ revision: number; plan: Entitlements | null }>();
+  const [planRefresh, setPlanRefresh] = useState(0);
+  const refreshPlan = useCallback(() => setPlanRefresh(value => value + 1), []);
+  const plan = planSnapshot && planSnapshot.revision === revision ? planSnapshot.plan : null;
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+    fetchEntitlements(controller.signal).then(
+      result => { if (!controller.signal.aborted) setPlanSnapshot({ revision, plan: result }); },
+      () => { if (!controller.signal.aborted) setPlanSnapshot({ revision, plan: null }); },
+    );
+    return () => controller.abort();
+  }, [user, revision, planRefresh]);
+  const [restorePreview, setRestorePreview] = useState<{ file: File; counts: RestorePreview } | null>(null);
+  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const mounted = useRef(true);
   const validating = useRef(false);
   const [fields, setFields] = useState({ email: "", password: "", display_name: "", current_password: "" });
@@ -343,7 +357,10 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
       importForm.reset();
       setNotice(`Import complete. Nodes: ${result.nodes}, edges: ${result.edges}, layouts: ${result.layouts}.`);
     } catch (cause) {
-      if (started === identityGeneration()) setError(importErrorMessage(cause));
+      if (started === identityGeneration()) {
+        if (cause instanceof ApiError && cause.code === "plan_limit_exceeded") refreshPlan();
+        setError(importErrorMessage(cause));
+      }
     } finally {
       setBusy(false);
     }
@@ -368,7 +385,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
 
   async function confirmRestore(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || busy || !restorePreview || !restoreConfirmed) return;
+    if (!user || busy || !restorePreview?.counts.eligibility.allowed || !restoreConfirmed) return;
     if (workspaceExit()?.busy) {
       setError("Finish your current workspace edits before restoring.");
       return;
@@ -387,6 +404,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
     } catch (cause) {
       if (started === identityGeneration()) {
         setRestoreConfirmed(false);
+        if (cause instanceof ApiError && cause.code === "plan_limit_exceeded") refreshPlan();
         setError(importErrorMessage(cause, "restore"));
       }
     } finally {
@@ -395,8 +413,9 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
   }
 
   if (checking) return <ApplicationShell bar={<strong>My Way</strong>}><p className="auth-status" role="status">Checking your session…</p></ApplicationShell>;
-  if (user && !token) return <AccountContext.Provider value={{ openAccount: () => { setAccountSection("profile"); setAccountOpen(true); setError(""); setNotice(""); } }}>
+  if (user && !token) return <AccountContext.Provider value={{ openAccount: () => { refreshPlan(); setAccountSection("profile"); setAccountOpen(true); setError(""); setNotice(""); } }}>
     {connectionError && <div className="connection-banner" role="status">Connection interrupted. Your workspace is still open. <button onClick={() => void validate()}>Retry</button></div>}
+    <EntitlementContext.Provider value={{ plan, refresh: refreshPlan }}>
     {children(user, revision)}
     {accountOpen && <AccountDialog busy={busy} labelledBy="account-dialog-title" onClose={() => { setAccountOpen(false); setLeaving(false); setConfirmDeletion(false); setDeletionPassword(""); setRestorePreview(null); setRestoreConfirmed(false); setFields(v => ({ ...v, password: "", current_password: "" })); }}>
       {restorePreview ? <>
@@ -410,15 +429,19 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
           <li>Positions: {restorePreview.counts.positions}</li>
           <li>Annotations: {restorePreview.counts.annotations}</li>
         </ul>
+        {!restorePreview.counts.eligibility.allowed && <ul role="alert">
+          {restorePreview.counts.eligibility.violations.map((violation, index) =>
+            <li key={index}>{formatPlanViolation(violation, true)}</li>)}
+        </ul>}
         {alerts}
         <button type="button" disabled={busy} onClick={() => void exportData()}>Download current workspace (JSON)</button>
         <form onSubmit={event => void confirmRestore(event)}>
           <fieldset disabled={busy}>
-            <label className="restore-confirmation"><input type="checkbox" required checked={restoreConfirmed}
+            <label className="restore-confirmation"><input type="checkbox" required checked={restoreConfirmed} disabled={!restorePreview.counts.eligibility.allowed}
               onChange={event => setRestoreConfirmed(event.target.checked)} />
               I understand that my current workspace will be permanently replaced.
             </label>
-            <button className="restore-submit" type="submit" disabled={!restoreConfirmed}>Replace workspace</button>
+            <button className="restore-submit" type="submit" disabled={!restoreConfirmed || !restorePreview.counts.eligibility.allowed}>Replace workspace</button>
             <button type="button" onClick={() => { setRestorePreview(null); setRestoreConfirmed(false); setAccountSection("data"); setError(""); }}>Cancel</button>
           </fieldset>
         </form>
@@ -458,6 +481,7 @@ export function AuthGate({ children }: { children: (user: User, generation: numb
           onBackToWorkspace={() => { setAccountOpen(false); setFields(v => ({ ...v, password: "", current_password: "" })); }}
         />}
     </AccountDialog>}
+    </EntitlementContext.Provider>
   </AccountContext.Provider>;
   return <ApplicationShell bar={<strong>My Way</strong>}><section className="auth-card">
     {connectionError ? <><h1>Cannot connect to My Way</h1><button onClick={() => void validate()}>Try again</button></> : pendingForm ?? form}

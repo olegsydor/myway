@@ -29,7 +29,7 @@ async def test_restore_preview_replace_repeat_rollback_and_isolation(test_engine
         before = workspace(await target.get("/export"))
         account = (await target.get("/auth/me")).json()
         counts = {"nodes": 3, "edges": 1, "layouts": 2, "positions": 5, "annotations": 2}
-        assert (await target.post("/restore/preview", json=original)).json() == counts
+        assert (await target.post("/restore/preview", json=original)).json() == {**counts, "eligibility": {"allowed": True, "violations": []}}
         assert (await target.post("/restore?confirmed=false", json=original)).status_code == 400
         assert (await target.post("/restore?confirmed=true", json=original,
                                   headers={"X-CSRF-Token": "wrong"})).status_code == 403

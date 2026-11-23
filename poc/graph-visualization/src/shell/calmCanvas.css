@@ -53,6 +53,7 @@
   opacity: 1;
 }
 .application-shell__bar .application-bar__layout small { color: var(--mw-secondary); font-size: 12px; }
+.layout-dialog .layout-delete-actions button:focus,
 :is(.application-shell, .layout-dialog) button:focus-visible,
 :is(.application-shell, .layout-dialog) input:focus-visible,
 :is(.application-shell, .layout-dialog) select:focus-visible,

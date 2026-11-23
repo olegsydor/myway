@@ -33,3 +33,18 @@ test("reports a nonempty account and drops a response from a previous account", 
   });
   await assert.rejects(importDataFile(file), StaleRequest);
 });
+
+test("a server-side layout quota error reports the actual limit for either plan", async t => {
+  setIdentity(1, "destination-token");
+  t.after(() => setIdentity(null, null));
+  const file = new File(["{}"], "export.json");
+  let limit = 3;
+  t.mock.method(globalThis, "fetch", async () => Response.json({
+    detail: { code: "plan_limit_exceeded", resource: "layouts", plan: limit === 3 ? "free" : "pro",
+      limit, current: 0, attempted: limit + 1 },
+  }, { status: 409 }));
+  for (limit of [3, 15]) {
+    await assert.rejects(importDataFile(file), error =>
+      importErrorMessage(error) === `This file contains ${limit + 1} layouts. Your current plan allows ${limit}.`);
+  }
+});

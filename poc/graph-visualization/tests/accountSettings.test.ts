@@ -147,3 +147,28 @@ test("main sections invoke existing handlers once and do not expose deletion pas
     assert.equal(root!.root.findAllByType("section")[0].props["aria-labelledby"], "account-tab-profile");
   } finally { await act(async () => root?.unmount()); }
 });
+
+test("Plan and Usage renders Free, early tester, finite Pro and unavailable", async () => {
+  const { EntitlementContext } = await import("../src/auth/entitlements.ts");
+  const common = { starts_at: null, expires_at: null, usage: { nodes: 42, layouts: 2 } };
+  const proLimits = { nodes: null, annotations_per_layout: null, layouts: 15 };
+  const cases = [
+    [{ ...common, plan: "free", source: "default", limits: { nodes: 300, annotations_per_layout: 15, layouts: 3 } }, /Nodes:.*42.*of.*300/],
+    [{ ...common, plan: "pro", source: "early_tester", limits: proLimits }, /Early tester access/],
+    [{ ...common, plan: "pro", source: "manual", limits: proLimits, expires_at: "2027-12-31T23:59:59Z" }, /Access ends/],
+    [null, /Plan information is temporarily unavailable/],
+  ] as const;
+  for (const [plan, expected] of cases) {
+    let root: ReturnType<typeof create>;
+    await act(async () => {
+      root = create(createElement(EntitlementContext.Provider, { value: { plan, refresh() {} } },
+        createElement(AccountSettings, harnessProps("profile", () => {}))));
+    });
+    try {
+      const content = JSON.stringify(root!.toJSON());
+      assert.match(content, expected);
+      if (plan) assert.match(content, new RegExp(`Layouts:.*2.*of.*${plan.limits.layouts}`));
+    }
+    finally { await act(async () => root!.unmount()); }
+  }
+});

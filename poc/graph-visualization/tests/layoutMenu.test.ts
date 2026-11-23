@@ -79,3 +79,14 @@ test('Fit and Reset are unavailable until React Flow and workspace are ready', (
   assert.equal(commands.fit.enabled, false); commands.fit.run();
   assert.equal(commands.reset.enabled, false); commands.reset.run();
 });
+
+test("layout quota disables creation while Save and switching remain available", () => {
+  const { menu, calls } = fixture({ layoutCreationBlocked: "Your plan allows 3 layouts." });
+  const create = menu.find(item => item.id === "new")!;
+  assert.equal(create.disabled, true);
+  assert.match(create.label, /limit reached/);
+  create.run?.();
+  assert.deepEqual(calls, []);
+  assert.equal(menu.find(item => item.id === "save")!.disabled, false);
+  assert.equal(menu.find(item => item.id === "switch")!.disabled, false);
+});

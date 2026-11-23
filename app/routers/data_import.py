@@ -7,9 +7,11 @@ from app.core.database import get_db_session
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.repositories.data_import import (
-    ImportRequiresEmptyAccount, find_replaceable_layout, replace_workspace, resolve_types, restore_data,
+    ImportRequiresEmptyAccount, replace_workspace, resolve_types, restore_data,
 )
 from app.schemas.data_import import DataImport, parse_data_import
+from app.schemas.entitlement import Eligibility
+from app.services.entitlements import snapshot_eligibility
 
 router = APIRouter(tags=["data import"])
 MAX_IMPORT_BYTES = 64 * 1024 * 1024
@@ -57,14 +59,12 @@ async def import_data(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, int]:
     try:
-        # Authentication holds the same account row lock as other graph writers.
-        initial = await find_replaceable_layout(session, current_user.id)
         data = validated_export(body)
-        if initial is not None:
-            await session.delete(initial)
-            await session.flush()
         await restore_data(session, current_user.id, data)
         await session.commit()
+    except HTTPException:
+        await session.rollback()
+        raise
     except ImportRequiresEmptyAccount as exc:
         raise HTTPException(409, "import_requires_empty_account") from exc
     except ValueError as exc:
@@ -80,13 +80,14 @@ async def preview_restore(
     body: bytearray = Depends(read_import_body),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-) -> dict[str, int]:
+) -> dict[str, int | Eligibility]:
     data = validated_export(body)
     try:
         await resolve_types(session, data)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    return restore_counts(data)
+    eligibility = await snapshot_eligibility(session, current_user.id, data)
+    return {**restore_counts(data), "eligibility": eligibility}
 
 
 @router.post("/restore")
@@ -103,6 +104,9 @@ async def restore_workspace(
     try:
         await replace_workspace(session, current_user.id, data)
         await session.commit()
+    except HTTPException:
+        await session.rollback()
+        raise
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(422, str(exc)) from exc

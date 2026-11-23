@@ -7,6 +7,7 @@ from app.models import Edge, EdgeType, Layout, LayoutAnnotation, LayoutNodePosit
 from app.repositories.layout import write_annotations, write_positions
 from app.schemas.data_import import DataImport
 from app.schemas.layout import WorkspaceSnapshot
+from app.services.entitlements import check_snapshot, lock_owner
 
 
 class ImportRequiresEmptyAccount(Exception):
@@ -48,7 +49,13 @@ async def resolve_types(session: AsyncSession, data: DataImport) -> tuple[dict[s
 
 
 async def restore_data(session: AsyncSession, user_id: int, data: DataImport) -> None:
+    await lock_owner(session, user_id)
+    initial = await find_replaceable_layout(session, user_id)
     node_types, edge_types = await resolve_types(session, data)
+    await check_snapshot(session, user_id, data)
+    if initial is not None:
+        await session.delete(initial)
+        await session.flush()
     await insert_workspace(session, user_id, data, node_types, edge_types)
 
 
@@ -95,8 +102,10 @@ async def insert_workspace(
 
 
 async def replace_workspace(session: AsyncSession, user_id: int, data: DataImport) -> None:
+    await lock_owner(session, user_id)
     # Validate references to the current catalog before touching workspace rows.
     node_types, edge_types = await resolve_types(session, data)
+    await check_snapshot(session, user_id, data)
     # Layout deletion cascades to positions and annotations through owner-scoped FKs.
     for model in (Layout, Edge, Node):
         await session.execute(delete(model).where(model.user_id == user_id))

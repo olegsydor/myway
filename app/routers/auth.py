@@ -14,6 +14,9 @@ from app.models import User
 from app.models.auth import ActionToken, AuthSession
 from app.schemas.auth import EmailInput, RegisterInput, LoginInput, TokenPasswordInput, ChangePasswordInput, CurrentPasswordInput
 
+from app.schemas.entitlement import Entitlements
+from app.services.entitlements import public_entitlements
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 ACK = {"message": "If this address is eligible, an email will arrive shortly."}
 
@@ -230,3 +233,13 @@ async def cancel_deletion(
     user.updated_at = now
     await session.commit()
     return Response(status_code=204)
+
+
+@router.get("/entitlements")
+async def entitlements(
+    response: Response,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> Entitlements:
+    response.headers["Cache-Control"] = "no-store"
+    return await public_entitlements(session, user.id)

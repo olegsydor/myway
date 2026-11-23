@@ -1,3 +1,4 @@
+import { layoutLimitMessage, useEntitlements } from "./entitlements.ts";
 import { useRef, type FormEvent, type KeyboardEvent } from "react";
 
 export type AccountSection = "profile" | "data" | "danger";
@@ -36,6 +37,10 @@ const sectionIds: Record<AccountSection, { tab: string; panel: string }> = {
 };
 
 export function AccountSettings(props: AccountSettingsProps) {
+  const { plan } = useEntitlements();
+  const fileLimits = plan && (plan.plan === "free"
+    ? `Free allows up to ${plan.limits.layouts} layouts, ${plan.limits.nodes} nodes and ${plan.limits.annotations_per_layout} annotations per layout.`
+    : `Pro allows up to ${plan.limits.layouts} layouts per workspace.`);
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function moveTab(event: KeyboardEvent<HTMLButtonElement>, current: AccountSection) {
@@ -84,6 +89,22 @@ export function AccountSettings(props: AccountSettingsProps) {
 
     <section id={sectionIds.profile.panel} role="tabpanel" aria-labelledby={sectionIds.profile.tab} hidden={props.section !== "profile"}>
       <div className="account-settings__card">
+        <h2>Plan &amp; Usage</h2>
+        {!plan ? <p>Plan information is temporarily unavailable</p> : <>
+          <strong>{plan.plan === "pro"
+            ? plan.source === "early_tester" && !plan.expires_at ? "Pro · Early tester access" : "Pro"
+            : "Free"}</strong>
+          <p>Nodes: {plan.limits.nodes === null ? "Unlimited" : `${plan.usage.nodes} of ${plan.limits.nodes}`}</p>
+          <p>Layouts: {plan.usage.layouts} of {plan.limits.layouts}</p>
+          <p>{plan.limits.annotations_per_layout === null ? "Annotations per layout: Unlimited"
+            : `Up to ${plan.limits.annotations_per_layout} annotations per layout`}</p>
+          {plan.usage.layouts > plan.limits.layouts && <p>Existing layouts remain available. {layoutLimitMessage(plan.limits.layouts)}</p>}
+          {plan.expires_at && <p>Access ends {new Intl.DateTimeFormat(undefined, {
+            dateStyle: "medium", timeStyle: "short",
+          }).format(new Date(plan.expires_at))}</p>}
+        </>}
+      </div>
+      <div className="account-settings__card">
         <h2>Password</h2>
         <form onSubmit={props.onPasswordSubmit}>
           <fieldset disabled={props.busy}>
@@ -115,6 +136,7 @@ export function AccountSettings(props: AccountSettingsProps) {
       <div className="account-settings__card">
         <h2>Import into an empty account</h2>
         <p>Import a My Way JSON export into an empty account.</p>
+        {fileLimits && <p>{fileLimits}</p>}
         <form onSubmit={props.onImport}>
           <fieldset disabled={props.busy}>
             <label>My Way export file
@@ -127,6 +149,7 @@ export function AccountSettings(props: AccountSettingsProps) {
       <div className="account-settings__card account-settings__card--restore">
         <h2>Restore / Replace workspace</h2>
         <p className="account-settings__warning">The current workspace will be completely replaced by the selected export.</p>
+        {fileLimits && <p>{fileLimits}</p>}
         <form onSubmit={props.onRestorePreview}>
           <fieldset disabled={props.busy}>
             <label>Restore from a My Way JSON export
