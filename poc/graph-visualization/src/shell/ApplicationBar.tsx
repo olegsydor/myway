@@ -7,14 +7,16 @@ import type { MenuItem } from './menuModel';
 import type { Command } from '../react-flow/workspaceCommands';
 import { WorkspaceModeSwitch } from '../react-flow/AnnotationControls';
 import type { AnnotationWorkspace } from '../react-flow/useAnnotationWorkspace';
+import { WORKSPACE_PANEL_ID } from './workspacePanelState';
+import type { useWorkspacePanel } from './useWorkspacePanel';
 import { isEditableTarget } from '../react-flow/graphShortcuts';
 
 export function ApplicationBar({ layoutName, status, layoutItems, save, commands, workspace,
-  modeLocked, menuBlocked, exportDiagnostics, formActive, toolsPanel }: {
+  modeLocked, menuBlocked, exportDiagnostics, formActive, panel }: {
   layoutName: string; status: string; layoutItems: MenuItem[]; save: Command; commands: ShellCommands;
   workspace: AnnotationWorkspace; modeLocked: boolean; menuBlocked: boolean; formActive: boolean;
   exportDiagnostics?: () => void;
-  toolsPanel: { open: boolean; toggle: () => void };
+  panel: ReturnType<typeof useWorkspacePanel>;
 }) {
   const [help, setHelp] = useState(false);
   const [helpInvoker, setHelpInvoker] = useState<HTMLElement | null>(null);
@@ -24,13 +26,25 @@ export function ApplicationBar({ layoutName, status, layoutItems, save, commands
   }
   const blocked = menuBlocked || help;
   const modalOpen = () => Boolean(document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]'));
+  const annotations = workspace.mode === 'annotation';
+  const launcherView = annotations ? 'annotations' : 'search';
+  const viewAction = panel.open ? {
+    label: 'Close side panel',
+    run: () => {
+      const invoker = document.querySelector<HTMLElement>('[data-application-menu="view"]') ?? undefined;
+      panel.close(invoker);
+    },
+  } : undefined;
   return <>
-    <button type="button" data-tools-toggle className="application-bar__tools" aria-controls="myway-tools-panel"
-      aria-expanded={toolsPanel.open} aria-label={toolsPanel.open ? 'Hide tools panel' : 'Show tools panel'}
-      onPointerDown={event => { if (workspace.editor) event.preventDefault(); }}
-      onClick={toolsPanel.toggle}>Tools</button>
     <strong className="application-bar__identity">My Way</strong>
-    <ApplicationMenu menus={applicationMenus(layoutItems, commands, openHelp, exportDiagnostics, toolsPanel)}
+    <ApplicationMenu menus={applicationMenus(layoutItems, commands, openHelp, exportDiagnostics, viewAction, {
+      label: annotations ? 'Annotations' : 'Search',
+      controls: WORKSPACE_PANEL_ID,
+      expanded: panel.open && panel.view === launcherView,
+      disabled: help,
+      preservePointerFocus: Boolean(workspace.editor),
+      run: invoker => { if (!modalOpen()) panel.launch(invoker); },
+    })}
       blocked={blocked} canOpen={() => !blocked && !modalOpen()}
       altAllowed={() => !blocked && !modalOpen() && !formActive && !isEditableTarget(document.activeElement)} />
     <div className="application-bar__layout" role="status" aria-live="polite" title={`${layoutName} — ${status}`}>

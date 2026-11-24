@@ -78,3 +78,13 @@ test('inline Text edit routes Escape centrally while keeping typing, Enter and B
   assert.deepEqual(dispatch('Escape', {...editor, modal:true}).actions, []);
   assert.deepEqual(dispatch('Escape', {...editor, workspaceMode:'graph'}), {prevented:false,actions:[]});
 });
+
+test('create shortcuts work outside canvas on the workspace surface and with Ukrainian letter keys', () => {
+  const surface = { canvas: false, createSurface: true };
+  assert.deepEqual(dispatch('n', surface).actions, ['createNode']);
+  assert.deepEqual(dispatch('e', surface).actions, ['createEdge']);
+  assert.deepEqual(dispatch('т', surface, { code: 'KeyN' }).actions, ['createNode']);
+  assert.deepEqual(dispatch('у', surface, { code: 'KeyE' }).actions, ['createEdge']);
+  assert.deepEqual(dispatch('т', { ...surface, editable: true }, { code: 'KeyN' }).actions, []);
+  assert.deepEqual(dispatch('Delete', surface).actions, []);
+});

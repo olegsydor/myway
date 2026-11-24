@@ -49,18 +49,19 @@ test('layout status derives from the controller phase, errors and dirty state', 
   assert.equal(layoutStatus({ phase: 'ready', error: '', dirty: true }), 'Unsaved');
   assert.equal(layoutStatus({ phase: 'ready', error: 'Failed', dirty: true }), 'Error');
 });
-test('five product menus share command identities; diagnostics is absent without debug capability', () => {
+test('product menus share command identities; diagnostics is absent without debug capability', () => {
   const calls: string[] = [];
   const commands = workspaceCommands({ annotationMode: true, blocked: false, locked: false, dirty: true }, {
     save() {}, focusForm() {}, arrange() {}, fit: () => calls.push('fit'), reset() {},
   });
-  const menus = applicationMenus([], commands, () => calls.push('help'));
-  assert.deepEqual(menus.map(menu => menu.label), ['Layout', 'Create', 'Arrange', 'View', 'Help']);
-  assert.equal(menus[1]!.items.every(item => item.disabled), true);
-  assert.equal(menus[2]!.items.find(item => item.id === 'fit')!.run, commands.fit.run);
+  const launcher = { label: 'Search', controls: 'workspace-panel', expanded: false, disabled: false, run() {} };
+  const menus = applicationMenus([], commands, () => calls.push('help'), undefined, undefined, launcher);
+  assert.deepEqual(menus.map(menu => menu.label), ['Create', 'Search', 'Layout', 'View', 'Arrange', 'Help']);
+  assert.equal(menus[0]!.items.every(item => item.disabled), true);
+  assert.equal(menus[4]!.items.find(item => item.id === 'fit')!.run, commands.fit.run);
   assert.equal(menus[3]!.items.some(item => item.id === 'export'), false);
-  assert.equal(applicationMenus([], commands, () => {}, () => {})[3]!.items.some(item => item.id === 'export'), true);
-  menus[2]!.items.find(item => item.id === 'fit')!.run!(); assert.deepEqual(calls, ['fit']);
+  assert.equal(applicationMenus([], commands, () => {}, () => {}, undefined, launcher)[3]!.items.some(item => item.id === 'export'), true);
+  menus[4]!.items.find(item => item.id === 'fit')!.run!(); assert.deepEqual(calls, ['fit']);
 });
 test('Save is unavailable during protected forms/editors; Help lists only delivered shortcuts', () => {
   const commands = workspaceCommands({ annotationMode: false, blocked: false, locked: false, dirty: true, saveProtected: true }, {

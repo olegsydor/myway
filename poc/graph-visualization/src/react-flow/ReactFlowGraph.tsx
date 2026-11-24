@@ -3,9 +3,9 @@ import { registerWorkspace } from "../auth/workspaceLifecycle";
 import { GRAPH_APPEARANCE } from "./graphAppearance.ts";
 import { useWorkspaceTitle } from "./useWorkspaceTitle";
 import { useLayoutViewport } from "./useLayoutViewport";
-import { ToolsPanel } from "../shell/ToolsPanel";
-import { useToolsPanel } from "../shell/useToolsPanel";
-import { useCreateFormFocus } from "../shell/useCreateFormFocus";
+import { WorkspacePanel } from "../shell/WorkspacePanel";
+import { CreatePanelTabs } from "../shell/CreatePanelTabs";
+import { useWorkspacePanel } from "../shell/useWorkspacePanel";
 import { ApplicationShell } from "../shell/ApplicationShell";
 import { ApplicationBar } from "../shell/ApplicationBar";
 import { useWorkspaceCommands } from "./workspaceCommands";
@@ -411,8 +411,6 @@ useEffect(() => {
     toGraph: (point) => instanceRef.current?.screenToFlowPosition(point, { snapToGrid: false }) ?? point,
     onBusy: setAnnotationBusy,
     onEnterAnnotation: () => {
-      resetHighlighting();
-      setManualGroup(null);
       rectangleGestureRef.current = null;
       setSelectionRectangle(null);
     },
@@ -888,11 +886,14 @@ const handleNodesChange = useCallback(
         })
       : nodes;
 
-  const interactionNodes = useMemo(() =>
-    annotationMode || layout.locked || deleteState.target
-      ? previewNodes.map((node) => ({ ...node, draggable: false })) : previewNodes,
-    [annotationMode, layout.locked, deleteState.target, previewNodes],
-  );
+  const interactionNodes = useMemo(() => {
+    // Suppress graph highlights while editing annotations without clearing Graph state.
+    if (annotationMode) return clearNodeHighlights(nodes).map((node) => ({ ...node, draggable: false }));
+    if (layout.locked || deleteState.target) return previewNodes.map((node) => ({ ...node, draggable: false }));
+    return previewNodes;
+  }, [annotationMode, nodes, layout.locked, deleteState.target, previewNodes]);
+
+  const annotationEdges = useMemo(() => annotationMode ? clearEdgeHighlights(edges) : edges, [annotationMode, edges]);
 
   const previewEdges = activeBranch
     ? edges.map((edge) => {
@@ -972,6 +973,8 @@ const handleNodesChange = useCallback(
   const [pathStart, setPathStart] = useState("");
   const [pathEnd, setPathEnd] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [nodeFeedback, setNodeFeedback] = useState<{ error?: string; success?: string }>({});
+  const [edgeFeedback, setEdgeFeedback] = useState<{ error?: string; success?: string }>({});
   const [availableNodeTypes, setAvailableNodeTypes] = useState<NodeType[]>([]);
   const [availableEdgeTypes, setAvailableEdgeTypes] = useState<EdgeType[]>([]);
   const [newNodeTypeId, setNewNodeTypeId] = useState("");
@@ -1290,14 +1293,22 @@ const handleNodesChange = useCallback(
     },
   }));
 
-  const toolsPanel = useToolsPanel();
-  const formSections = useCreateFormFocus(toolsPanel.open, toolsPanel.show);
+  const panel = useWorkspacePanel(annotationMode);
   const [keyboardForm, setKeyboardForm] = useState(false);
-  function focusForm(key: "createNode" | "createEdge") {
+  const createActive = panel.open && (panel.view === "create-node" || panel.view === "create-edge");
+  function focusForm(key: "createNode" | "createEdge", invoker?: HTMLElement) {
     setKeyboardForm(true);
-    formSections.focus(key);
+    const trigger = invoker ?? document.querySelector<HTMLElement>(
+      document.activeElement?.closest('[role="menu"], [data-application-menu="create"]')
+        ? '[data-application-menu="create"]' : '.react-flow-container',
+    ) ?? undefined;
+    if (key === "createNode") panel.openCreateNode(trigger);
+    else panel.openCreateEdge(trigger);
   }
 
+  function revealContextualEdit() {
+    if (createActive && !annotationMode && !isLayoutLocked()) panel.openSearch(undefined, false);
+  }
 
   function handleSearchResult(result: GraphSearchResult) {
     if (annotationMode) return;
@@ -1873,14 +1884,14 @@ const handleNodesChange = useCallback(
     stopRecovery: layout.stopRecovery,
   }), [layout, annotationWorkspace.editor, annotationWorkspace.gestureActive]);
 
-  const formActive = keyboardForm || Boolean(document.activeElement?.closest(
+  const formActive = (createActive && keyboardForm) || Boolean(document.activeElement?.closest(
     ".react-flow-edit-panel, [data-graph-create]"));
   const commands = useWorkspaceCommands({
     annotationMode, nodeLimitReason: nodeLimitReached ? "Free node limit reached" : undefined, blocked: layout.blocked, locked: layout.locked, dirty: layout.dirty && !layout.initialSaveBlocked, saveProtected: formActive || Boolean(annotationWorkspace.editor), ready: flowReady && layout.startupReady,
   }, {
     save: () => {
       if (document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]') ||
-          keyboardForm || document.activeElement?.closest(".react-flow-edit-panel, [data-graph-create]") || annotationWorkspace.editor) {
+          (createActive && keyboardForm) || document.activeElement?.closest(".react-flow-edit-panel, [data-graph-create]") || annotationWorkspace.editor) {
         setActionMessage("Finish or cancel the current operation first."); return;
       }
       return layout.save();
@@ -2058,22 +2069,26 @@ const handleNodesChange = useCallback(
   }, [graphData, setEdges, setNodes]);
 
   async function handleCreateNode() {
-    if (nodeLimitReached || annotationMode || layout.isLocked()) return;
+    if (nodeLimitReached || isCreatingNode || annotationMode || layout.isLocked()) return;
     const name = newNodeName.trim();
     const nodeTypeId = Number(newNodeTypeId);
 
     if (!name) {
-      setActionMessage("Node name is required");
+      setNodeFeedback({ error: "Node name is required" });
+      panel.focusField("create-node", "[data-create-name]");
       return;
     }
 
     if (!Number.isInteger(nodeTypeId) || nodeTypeId <= 0) {
-      setActionMessage("Select a valid Node type");
+      setNodeFeedback({ error: "Select a valid Node type" });
+      panel.focusField("create-node", "select");
       return;
     }
 
     const properties = propertyRowsToObject(newNodeProperties);
 
+    const focusNext = panel.focusAfterSubmit("create-node");
+    setNodeFeedback({});
     setIsCreatingNode(true);
 
     try {
@@ -2090,39 +2105,45 @@ const handleNodesChange = useCallback(
       setNewNodeName("");
       setNewNodeDescription("");
       setNewNodeProperties([]);
-      setActionMessage(`Node created: ${name}`);
+      setNodeFeedback({ success: `Node created: ${name}` });
+      focusNext();
     } catch (createError) {
       const limit = planLimitMessage(createError);
       if (limit) refreshPlan();
-      setActionMessage(limit ?? (createError instanceof Error ? createError.message : "Failed to create Node"));
+      setNodeFeedback({ error: limit ?? (createError instanceof Error ? createError.message : "Failed to create Node") });
     } finally {
       setIsCreatingNode(false);
     }
   }
 
   async function handleCreateEdge() {
-    if (annotationMode || layout.isLocked()) return;
+    if (isCreatingEdge || annotationMode || layout.isLocked()) return;
     const sourceNodeId = Number(newEdgeSourceId);
     const targetNodeId = Number(newEdgeTargetId);
     const edgeTypeId = Number(newEdgeTypeId);
 
     if (!Number.isInteger(sourceNodeId) || sourceNodeId <= 0) {
-      setActionMessage("Select a valid source Node");
+      setEdgeFeedback({ error: "Select a valid source Node" });
+      panel.focusField("create-edge", "#create-edge-source");
       return;
     }
 
     if (!Number.isInteger(targetNodeId) || targetNodeId <= 0) {
-      setActionMessage("Select a valid target Node");
+      setEdgeFeedback({ error: "Select a valid target Node" });
+      panel.focusField("create-edge", "#create-edge-target");
       return;
     }
 
     if (!Number.isInteger(edgeTypeId) || edgeTypeId <= 0) {
-      setActionMessage("Select a valid Edge type");
+      setEdgeFeedback({ error: "Select a valid Edge type" });
+      panel.focusField("create-edge", "select");
       return;
     }
 
     const properties = propertyRowsToObject(newEdgeProperties);
 
+    const focusNext = panel.focusAfterSubmit("create-edge");
+    setEdgeFeedback({});
     setIsCreatingEdge(true);
 
     try {
@@ -2141,13 +2162,10 @@ const handleNodesChange = useCallback(
       setNewEdgeDescription("");
       setNewEdgeProperties([]);
 
-      setActionMessage("Edge created");
+      setEdgeFeedback({ success: "Edge created" });
+      focusNext();
     } catch (createError) {
-      setActionMessage(
-        createError instanceof Error
-          ? createError.message
-          : "Failed to create Edge",
-      );
+      setEdgeFeedback({ error: createError instanceof Error ? createError.message : "Failed to create Edge" });
     } finally {
       setIsCreatingEdge(false);
     }
@@ -2213,20 +2231,25 @@ return (
       menuBlocked={surface.dialogOpen || Boolean(deleteState.target) || Boolean(annotationWorkspace.deleteTarget) ||
         Boolean(annotationWorkspace.editor) || annotationWorkspace.gestureActive || Boolean(selectionRectangle) ||
         nodes.some(node => node.dragging) || layout.phase === "recovery"}
-      toolsPanel={toolsPanel} formActive={formActive} exportDiagnostics={diagnosticsRef.current ? exportDiagnostics : undefined}
+      panel={panel} formActive={formActive} exportDiagnostics={diagnosticsRef.current ? exportDiagnostics : undefined}
     />}>
   <section className="react-flow-panel">
     <GraphDeleteDialog state={deleteState} onCancel={deletion.cancel}
       onConfirm={() => void deletion.confirm()} onRetry={() => void deletion.retryRefresh()} />
     <AnnotationDeleteDialog workspace={annotationWorkspace} locked={annotationLocked} />
-    <ToolsPanel open={toolsPanel.open} mode={toolsPanel.mode} onClose={toolsPanel.hide}>
-        <div className="react-flow-toolbar">
-        <LayoutMessages layout={layout} onRefreshGraph={refreshGraphForLayout} />
-        <AnnotationControls annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked}
-          planCeiling={annotationCeiling} dragMode={annotationDragMode} onDragModeChange={setAnnotationDragMode} />
-        <fieldset className="graph-crud-controls" hidden={annotationMode} disabled={annotationMode || annotationBusy}>
-        <div data-graph-create ref={formSections.createNode}>
-          <strong>Create Node</strong>
+    <WorkspacePanel open={panel.open} mode={panel.mode} view={panel.view} onClose={() => panel.close()}
+      header={createActive && (panel.view === "create-node" || panel.view === "create-edge") &&
+        <CreatePanelTabs view={panel.view} onSelect={view => {
+          if (view === "create-node") panel.openCreateNode(undefined, false);
+          else panel.openCreateEdge(undefined, false);
+        }} />}
+      shared={<LayoutMessages layout={layout} onRefreshGraph={refreshGraphForLayout} />}
+      bodies={{
+        annotations: <div className="react-flow-toolbar"><AnnotationControls annotations={annotations} workspace={annotationWorkspace} locked={annotationLocked}
+          planCeiling={annotationCeiling} dragMode={annotationDragMode} onDragModeChange={setAnnotationDragMode} /></div>,
+        "create-node": <div className="react-flow-toolbar">
+        <fieldset className="graph-crud-controls" disabled={annotationMode || annotationBusy}>
+        <div data-graph-create>
           {nodeLimitReached && <p>{nodeLimitMessage(nodeLimit)}</p>}
           <label>
             Type{" "}
@@ -2247,6 +2270,7 @@ return (
             Name{" "}
             <input
               type="text"
+              data-create-name
               value={newNodeName}
               onChange={(event) => setNewNodeName(event.target.value)}
               disabled={isCreatingNode}
@@ -2335,14 +2359,22 @@ return (
           >
             {isCreatingNode ? "Creating…" : "Add Node"}
           </button>
+          <div aria-atomic="true" role="alert">{
+            nodeFeedback.error && <span className="error">{nodeFeedback.error}</span>
+          }</div>
+          <div aria-atomic="true" role="status">{nodeFeedback.success}</div>
         </div>
 
-        <div data-graph-create ref={formSections.createEdge}>
-          <strong>Create Edge</strong>
+        </fieldset>
+        </div>,
+        "create-edge": <div className="react-flow-toolbar">
+        <fieldset className="graph-crud-controls" disabled={annotationMode || annotationBusy}>
+        <div data-graph-create>
 
           <NodeSearchSelect
             nodes={graphData.nodes}
             value={newEdgeSourceId}
+            inputId="create-edge-source"
             placeholder="Source Node"
             disabled={isCreatingEdge}
             onChange={setNewEdgeSourceId}
@@ -2351,25 +2383,26 @@ return (
           <NodeSearchSelect
             nodes={graphData.nodes}
             value={newEdgeTargetId}
+            inputId="create-edge-target"
             placeholder="Target Node"
             disabled={isCreatingEdge}
             onChange={setNewEdgeTargetId}
           />
 
-          <select
-            value={newEdgeTypeId}
-            onChange={(event) => setNewEdgeTypeId(event.target.value)}
-            disabled={isCreatingEdge}
-          >
-            {availableEdgeTypes.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </select>
+          <label>
+            Type{" "}
+            <select value={newEdgeTypeId} onChange={(event) => setNewEdgeTypeId(event.target.value)} disabled={isCreatingEdge}>
+              {availableEdgeTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <input
             type="text"
+            aria-label="Description"
             placeholder="Description"
             value={newEdgeDescription}
             onChange={(event) => setNewEdgeDescription(event.target.value)}
@@ -2452,13 +2485,17 @@ return (
           >
             {isCreatingEdge ? "Creating..." : "Add Edge"}
           </button>
+          <div aria-atomic="true" role="alert">{
+            edgeFeedback.error && <span className="error">{edgeFeedback.error}</span>
+          }</div>
+          <div aria-atomic="true" role="status">{edgeFeedback.success}</div>
         </div>
 
         </fieldset>
 
-      </div>
-
-      <div className="react-flow-product-controls" hidden={annotationMode}>
+      </div>,
+      search: <>
+      <div className="react-flow-product-controls">
         <fieldset className="graph-mode-controls" disabled={annotationMode}>
           <GraphSearchPanel graph={graphData} onSelect={handleSearchResult} />
         </fieldset>
@@ -2644,7 +2681,7 @@ return (
         )}
       </div>
 
-          <div className="react-flow-edit-panel" hidden={annotationMode}>
+          <div className="react-flow-edit-panel">
         {selectedNodeForEdit && (
           <div>
             <strong>Edit Node</strong>
@@ -2875,12 +2912,13 @@ return (
         )}
       </div>
 
-    </ToolsPanel>
+      </>,
+      }} />
 
     <div className="react-flow-workspace">
       {layout.startupReady && graphData.nodes.length === 0 && !annotationMode && <div className="first-run-hint">
         <p>Your workspace is ready. Start with your first node.</p>
-        <button type="button" onClick={() => focusForm("createNode")}>Create your first node</button>
+        <button type="button" onClick={event => focusForm("createNode", event.currentTarget)}>Create your first node</button>
       </div>}
 
 
@@ -2903,7 +2941,7 @@ return (
             : `${metrics.layoutMs.toFixed(2)} ms`}
         </span>
 
-        <span>Selected: {selectedElement}</span>
+        <span>Selected: {annotationMode ? "None" : selectedElement}</span>
       </div>}
 
       {!layout.startupReady ? (
@@ -3078,7 +3116,7 @@ return (
           elementsSelectable={!annotationMode}
           nodesFocusable={!annotationMode}
           edgesFocusable={!annotationMode}
-          edges={previewEdges}
+          edges={annotationMode ? annotationEdges : previewEdges}
           nodeTypes={reactFlowNodeTypes}
           edgeTypes={reactFlowEdgeTypes}
           onNodesChange={handleNodesChange}
@@ -3093,8 +3131,14 @@ return (
             }
             onEdgesChange(changes);
           }}
-          onNodeClick={handleNodeClick}
-          onEdgeClick={handleEdgeClick}
+          onNodeClick={(event, node) => {
+            handleNodeClick(event, node);
+            if (!event.ctrlKey && !event.metaKey && activeBranch?.anchorId !== node.id) revealContextualEdit();
+          }}
+          onEdgeClick={(event, edge) => {
+            handleEdgeClick(event, edge);
+            revealContextualEdit();
+          }}
           onPaneClick={annotationMode ? undefined : resetHighlighting}
           onInit={(instance) => {
             instanceRef.current = instance;

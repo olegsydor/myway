@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { dispatchShortcut, isEditableTarget, registerGraphKeyboard, type ShortcutContext } from "./graphShortcuts.ts";
+import { dispatchShortcut, isEditableTarget, registerGraphKeyboard, resolveShortcut, type ShortcutContext } from "./graphShortcuts.ts";
 
-export function useGraphShortcuts(context: Omit<ShortcutContext, "canvas" | "editable" | "modal"> & {
+export function useGraphShortcuts(context: Omit<ShortcutContext, "canvas" | "createSurface" | "editable" | "modal"> & {
   fallback: (event: KeyboardEvent) => void;
 }) {
   const latest = useRef(context);
@@ -10,12 +10,15 @@ export function useGraphShortcuts(context: Omit<ShortcutContext, "canvas" | "edi
     const listener = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       // Capture runs before menu React handlers, including for Cmd/Ctrl+S.
-      if (target?.closest('[role="menubar"], [role="menu"]') ||
+      const panelLauncher = Boolean(target?.closest("[data-panel-launcher]"));
+      if ((target?.closest('[role="menubar"], [role="menu"]') && !panelLauncher) ||
           document.querySelector('[role="menubar"] [role="menu"]')) return;
+      if (panelLauncher && !["createNode", "createEdge"].includes(resolveShortcut(event) ?? "")) return;
       const modal = Boolean(document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]'));
       const canvas = Boolean(target?.closest(".react-flow-container"));
       const editable = isEditableTarget(event.target);
-      if (!dispatchShortcut(event, { ...latest.current, canvas, editable, modal }) &&
+      const createSurface = panelLauncher || target === document.body;
+      if (!dispatchShortcut(event, { ...latest.current, canvas, createSurface, editable, modal }) &&
           latest.current.workspaceMode !== "annotation" && canvas && !editable && !modal && !latest.current.busy && !latest.current.form &&
           !event.repeat && !event.isComposing) latest.current.fallback(event);
     };

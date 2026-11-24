@@ -54,7 +54,7 @@ async function workspaceReady(page) {
   await workspaceReady(page);
   assert.equal(await page.locator('.react-flow__node').count(),0);
   await page.screenshot({path:path.join(out,'first-run.png'),fullPage:true});
-  const tools=page.locator('[data-tools-toggle]');
+  const tools=page.locator('[data-panel-launcher]');
   if(await tools.getAttribute('aria-expanded')==='false') await tools.click();
   const create=page.locator('[data-graph-create]').first();
   await create.getByLabel('Name',{exact:true}).fill('My private node');

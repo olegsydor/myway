@@ -47,13 +47,13 @@
   .application-bar__layout { max-width: 180px; }
 }
 
-.application-bar__tools { min-height: 32px; padding: 5px 9px; border-radius: 5px; border: 1px solid #64748b; background: #26354e; color: #fff; font: inherit; cursor: pointer; }
 .react-flow-panel { position: relative; }
-.tools-panel[hidden], .tools-panel [hidden] { display: none !important; }
-.tools-panel--docked { position: relative; z-index: 1; flex: 0 0 360px; width: 360px; }
-.tools-panel--overlay { position: absolute; inset: 0 auto 0 0; z-index: 1002; width: min(360px, 100%); min-width: 0; box-shadow: 4px 0 18px #0003; }
-.tools-panel__backdrop { position: absolute; inset: 0; z-index: 1001; background: #0f172a33; }
-.tools-panel__header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 8px 16px; border-bottom: 1px solid #dfe3e8; }
-.tools-panel__header button { min-height: 32px; cursor: pointer; }
+.workspace-panel[hidden], .workspace-panel [hidden] { display: none !important; }
+.workspace-panel--docked { position: relative; z-index: 1; flex: 0 0 360px; width: 360px; }
+.workspace-panel--overlay { position: absolute; inset: 0 auto 0 0; z-index: 1002; width: min(360px, 100%); min-width: 0; box-shadow: 4px 0 18px #0003; }
+.workspace-panel__backdrop { position: absolute; inset: 0; z-index: 1001; background: #0f172a33; }
+.workspace-panel__header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 8px 16px; border-bottom: 1px solid #dfe3e8; }
+.workspace-panel__header h2 { margin: 0; font-size: inherit; }
+.workspace-panel__header button { min-height: 32px; cursor: pointer; }
 
 .react-flow-workspace { position: relative; z-index: 0; }

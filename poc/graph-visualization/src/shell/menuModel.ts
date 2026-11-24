@@ -1,5 +1,12 @@
 export interface MenuItem { id: string; label: string; disabled?: boolean; kind?: "header" | "separator"; shortcut?: string; run?: () => void; children?: readonly MenuItem[] }
-export interface MenuDefinition { id: string; label: string; items: readonly MenuItem[] }
+export interface MenuAction {
+  controls: string;
+  expanded: boolean;
+  disabled: boolean;
+  preservePointerFocus?: boolean;
+  run: (invoker: HTMLButtonElement) => void;
+}
+export interface MenuDefinition { id: string; label: string; items: readonly MenuItem[]; action?: MenuAction }
 export interface MenuState { menu: number; path: number[]; open: boolean }
 
 export function createMenuModel(menus: () => readonly MenuDefinition[], update: (state: MenuState, restore?: boolean) => void,
@@ -15,6 +22,10 @@ export function createMenuModel(menus: () => readonly MenuDefinition[], update: 
   const first = (items: readonly MenuItem[]) => items.findIndex(item => !item.disabled && !item.kind);
   function close(restore = true) { publish({ ...state, path: [], open: false }, restore); }
   function open(menu: number) {
+    if (menus()[menu]?.action) {
+      publish({ menu, open: false, path: [] });
+      return;
+    }
     const index = first(menus()[menu]?.items ?? []);
     publish({ menu, open: true, path: index < 0 ? [] : [index] });
   }
@@ -29,7 +40,7 @@ export function createMenuModel(menus: () => readonly MenuDefinition[], update: 
   return {
     get state() { return state; }, close, open, activate,
     toggle(menu: number) { if (state.open && menu === state.menu) close(); else open(menu); },
-    hover(menu: number) { if (state.open && state.menu !== menu) open(menu); },
+    hover(menu: number) { if (state.open && state.menu !== menu && !menus()[menu]?.action) open(menu); },
     key(key: string): boolean {
       if (key === 'Tab') { close(false); return false; }
       if (key === 'Escape') {
@@ -38,6 +49,7 @@ export function createMenuModel(menus: () => readonly MenuDefinition[], update: 
         return true;
       }
       if (!state.open) {
+        if (menus()[state.menu]?.action && (key === 'Enter' || key === ' ')) return false;
         if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(key)) { open(state.menu); return true; }
       } else {
         if (key === 'Enter' || key === ' ') { if (state.path.length) activate(state.path); return true; }

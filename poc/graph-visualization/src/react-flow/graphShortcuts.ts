@@ -2,9 +2,12 @@ export const GRAPH_SHORTCUTS = {
   cancelAnnotation: "escape", saveLayout: "mod+s", createNode: "n", createEdge: "e", deleteElement: ["delete", "backspace"],
 } as const;
 export type ShortcutAction = keyof typeof GRAPH_SHORTCUTS;
-export type Key = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
+export type Key = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"> & { code?: string };
 export function resolveShortcut(event: Key, bindings: Record<ShortcutAction, string | readonly string[]> = GRAPH_SHORTCUTS): ShortcutAction | null {
-  const key = event.key.toLowerCase();
+  const typedKey = event.key.toLowerCase();
+  const physicalCreateKey = /^\p{Letter}$/u.test(typedKey) && !/^[a-z]$/.test(typedKey);
+  const key = physicalCreateKey && event.code === "KeyN" ? "n"
+    : physicalCreateKey && event.code === "KeyE" ? "e" : typedKey;
   if (event.altKey || event.shiftKey) return null;
   for (const action of Object.keys(bindings) as ShortcutAction[]) {
     const configured = bindings[action];
@@ -22,7 +25,7 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   ));
 }
 export interface ShortcutContext {
-  canvas: boolean; editable: boolean; modal: boolean; busy: boolean; form: boolean;
+  canvas: boolean; createSurface?: boolean; editable: boolean; modal: boolean; busy: boolean; form: boolean;
   workspaceMode?: "graph" | "annotation";
   annotationGesture?: boolean;
   annotationEditing?: boolean;
@@ -39,10 +42,12 @@ export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext)
     return true;
   }
   if (action === "cancelAnnotation" && context.workspaceMode !== "annotation") return false;
-  if (context.workspaceMode === "annotation" && (action === "createNode" || action === "createEdge")) return false;
+  const create = action === "createNode" || action === "createEdge";
+  if (context.workspaceMode === "annotation" && create) return false;
+  const inScope = context.canvas || (create && context.createSurface);
   const cancellingEditor = action === "cancelAnnotation" && context.workspaceMode === "annotation" && context.annotationEditing;
   const cancellingGesture = action === "cancelAnnotation" && context.annotationGesture;
-  if (event.defaultPrevented || event.repeat || event.isComposing || !context.canvas ||
+  if (event.defaultPrevented || event.repeat || event.isComposing || !inScope ||
       (context.editable && !cancellingEditor) || context.modal || (context.busy && !cancellingGesture && !cancellingEditor) || context.form) return false;
   event.preventDefault();
   context.run(action);

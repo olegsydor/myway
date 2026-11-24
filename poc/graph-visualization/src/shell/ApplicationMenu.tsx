@@ -82,17 +82,33 @@ export function ApplicationMenu({ menus, blocked = false, altAllowed = () => tru
       if (blocked || (!state.open && !canOpen())) return;
       if (model.key(event.key)) event.preventDefault();
     }}>
-    {menus.map((menu, index) => <div key={menu.id} className="application-menu__entry">
-      <button type="button" role="menuitem" aria-disabled={blocked} aria-haspopup="menu"
-        aria-expanded={state.open && state.menu === index}
-        aria-controls={state.open && state.menu === index ? `${id}-${index}-` : undefined}
-        data-application-menu={menu.id} data-menu-focus={String(index)} tabIndex={index === state.menu ? 0 : -1}
-        onPointerDown={event => { if (blocked) event.preventDefault(); }}
-        onFocus={() => model.focusButton(index)} onPointerEnter={() => { if (!blocked && canOpen()) model.hover(index); }}
-        onClick={() => { if (!blocked && canOpen()) model.toggle(index); }}>
-        {menu.label}
-      </button>
-      {state.open && state.menu === index && !blocked ? surface(menu.items) : null}
-    </div>)}
+    {menus.map((menu, index) => {
+      const action = menu.action;
+      return <div key={menu.id} className="application-menu__entry">
+        {action ? <button type="button" role="menuitem" data-panel-launcher
+          aria-disabled={action.disabled} aria-controls={action.controls} aria-expanded={action.expanded}
+          data-menu-focus={String(index)} tabIndex={index === state.menu ? 0 : -1}
+          onPointerDown={event => { if (action.preservePointerFocus) event.preventDefault(); }}
+          onFocus={() => model.focusButton(index)}
+          onClick={event => {
+            if (action.disabled) return;
+            if (model.state.open) model.close(false);
+            action.run(event.currentTarget);
+          }}>
+          {menu.label}
+        </button> : <>
+        <button type="button" role="menuitem" aria-disabled={blocked} aria-haspopup="menu"
+          aria-expanded={state.open && state.menu === index}
+          aria-controls={state.open && state.menu === index ? `${id}-${index}-` : undefined}
+          data-application-menu={menu.id} data-menu-focus={String(index)} tabIndex={index === state.menu ? 0 : -1}
+          onPointerDown={event => { if (blocked) event.preventDefault(); }}
+          onFocus={() => model.focusButton(index)} onPointerEnter={() => { if (!blocked && canOpen()) model.hover(index); }}
+          onClick={() => { if (!blocked && canOpen()) model.toggle(index); }}>
+          {menu.label}
+        </button>
+        {state.open && state.menu === index && !blocked ? surface(menu.items) : null}
+        </>}
+      </div>;
+    })}
   </div>;
 }

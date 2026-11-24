@@ -8,14 +8,12 @@
 }
 .application-bar__identity { letter-spacing: -0.4px; }
 .application-shell__bar .application-menu__entry > button,
-.application-shell__bar .application-bar__tools,
 .application-shell__bar > .annotation-button-row button {
   color: var(--mw-text);
   background: transparent;
   border-color: transparent;
   border-radius: var(--mw-radius-control);
 }
-.application-shell__bar .application-bar__tools { border-color: var(--mw-border); }
 .application-shell__bar > .annotation-button-row {
   gap: 2px;
   padding: 2px;
@@ -24,7 +22,6 @@
   border-radius: var(--mw-radius-surface);
 }
 .application-shell__bar .application-menu__entry > button:hover:not(:disabled),
-.application-shell__bar .application-bar__tools:hover,
 .application-shell__bar > .annotation-button-row button:hover:not(:disabled) {
   background: var(--mw-subtle);
 }
@@ -89,13 +86,13 @@
 
 .application-shell .react-flow-panel { border-top: 0; background: var(--mw-panel); }
 .application-shell .react-flow-sidebar { background: var(--mw-panel); border-color: var(--mw-border); font-size: 14px; }
-.application-shell .tools-panel__header { border-color: var(--mw-border); }
-.application-shell .tools-panel--overlay {
+.application-shell .workspace-panel__header { border-color: var(--mw-border); }
+.application-shell .workspace-panel--overlay {
   width: min(360px, 100%);
   min-width: 0;
   box-shadow: var(--mw-shadow);
 }
-.application-shell .tools-panel__backdrop { background: rgb(39 53 72 / 24%); }
+.application-shell .workspace-panel__backdrop { background: rgb(39 53 72 / 24%); }
 .application-shell .react-flow-toolbar,
 .application-shell .react-flow-edit-panel,
 .application-shell .react-flow-product-controls { border-color: var(--mw-border); }
@@ -194,3 +191,13 @@
   .application-shell .help-dialog dl > div { grid-template-columns: 1fr; gap: 4px; }
   .layout-dialog input { font-size: 16px; }
 }
+
+.workspace-panel__tabs { display: flex; gap: 8px; padding: 8px 16px 0; flex-shrink: 0; }
+.application-shell .workspace-panel__tabs [aria-selected="true"] {
+  color: var(--mw-accent);
+  border-color: var(--mw-accent);
+}
+.workspace-panel [role="alert"], .workspace-panel [role="status"] { overflow-wrap: anywhere; }
+
+.workspace-panel .annotation-button-row { flex-wrap: wrap; }
+.workspace-panel .react-flow-path-controls > * { min-width: 0; }

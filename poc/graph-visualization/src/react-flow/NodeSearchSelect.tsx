@@ -7,6 +7,7 @@ interface NodeSearchSelectProps {
   nodes: GraphNode[]
   value: string
   placeholder: string
+  inputId?: string
   disabled?: boolean
   onChange: (value: string) => void
 }
@@ -15,6 +16,7 @@ export function NodeSearchSelect({
   nodes,
   value,
   placeholder,
+  inputId,
   disabled = false,
   onChange,
 }: NodeSearchSelectProps) {
@@ -51,8 +53,10 @@ export function NodeSearchSelect({
     <div className="node-search-select">
       <input
         ref={searchInput}
+        id={inputId}
         onKeyDown={inputKey}
         type="text"
+        aria-label={placeholder}
         placeholder={placeholder}
         value={query || selectedNode?.label || ''}
         onChange={(event) => {
