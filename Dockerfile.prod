@@ -1,0 +1,15 @@
+FROM python:3.13.18-slim-bookworm@sha256:f0fa218d5b06f9b9235024fa061cde2cb141f726de52134471053d2d9b5324a3
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+
+COPY requirements.txt requirements-tested-lock.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && groupadd --gid 10001 myway \
+    && useradd --uid 10001 --gid 10001 --no-create-home myway
+COPY app/ app/
+COPY alembic/ alembic/
+COPY alembic.ini ./
+
+USER 10001:10001
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "172.30.24.2"]

@@ -1,0 +1,11 @@
+[Unit]
+Description=MyWay production auth cleanup and due account purge
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/myway/current
+ExecStart=/usr/bin/flock -n /run/lock/myway-release.lock /opt/myway/current/deploy/maintenance.sh
+StandardOutput=journal
+StandardError=journal

@@ -2,7 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
 
@@ -16,11 +16,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 settings = get_settings()
-
-config.set_main_option(
-    "sqlalchemy.url",
-    settings.database_url,
-)
 
 target_metadata = Base.metadata
 
@@ -37,10 +32,8 @@ def include_object(
     return True
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
-
     context.configure(
-        url=url,
+        url=settings.database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -63,9 +56,8 @@ def do_run_migrations(connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    connectable = create_async_engine(
+        settings.database_url,
         poolclass=pool.NullPool,
     )
 

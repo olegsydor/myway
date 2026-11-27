@@ -143,14 +143,14 @@ def verified_archive(directory):
 
 
 @contextmanager
-def disposable_postgres(database=DRILL_DB):
+def disposable_postgres(database=DRILL_DB, *, image=IMAGE):
     name = f"myway-cp5-{uuid4().hex}"
     # An isolated namespace has only loopback. The password is synthetic.
     container = run([
         "docker", "run", "--detach", "--rm", "--pull=never", "--name", name,
         "--network=none", "--tmpfs=/var/lib/postgresql/data",
         "--env", "POSTGRES_USER=postgres", "--env", f"POSTGRES_DB={database}", "--env", "POSTGRES_PASSWORD=drill-only",
-        IMAGE,
+        image,
     ], step="Start isolated PostgreSQL").decode().strip()
     try:
         deadline = time.monotonic() + 60
@@ -167,9 +167,9 @@ def disposable_postgres(database=DRILL_DB):
 
 
 @contextmanager
-def restored_database(directory):
+def restored_database(directory, *, image=IMAGE):
     # Check bytes before creating a target. There is no destination argument.
-    with verified_archive(directory) as dump, disposable_postgres() as container:
+    with verified_archive(directory) as dump, disposable_postgres(image=image) as container:
         run([
             "docker", "exec", "-i", container, "pg_restore",
             "--host=/var/run/postgresql", "--username=postgres", f"--dbname={DRILL_DB}",
@@ -183,15 +183,29 @@ def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="action", required=True)
-    for action in ("backup", "restore-test"):
-        actions.add_parser(action).add_argument("directory", type=Path)
+    backup = actions.add_parser("backup")
+    backup.add_argument("directory", type=Path)
+    backup.add_argument("--production-env", type=Path)
+    backup.add_argument("--project-name", help="Override myway-prod for a disposable production-like project")
+    restore = actions.add_parser("restore-test")
+    restore.add_argument("directory", type=Path)
+    restore.add_argument("--postgres-image", default=IMAGE, help="Local PostgreSQL 17 image for the isolated restore")
     args = parser.parse_args()
+    if args.action == "backup" and args.project_name and args.production_env is None:
+        parser.error("--project-name requires --production-env")
     try:
         if args.action == "backup":
-            path = create_backup(args.directory, ["docker", "compose", "exec", "-T", "db"])
+            compose = ["docker", "compose"]
+            if args.production_env is not None:
+                compose += [
+                    "--project-name", args.project_name or "myway-prod",
+                    "--file", str(ROOT / "docker-compose.prod.yml"),
+                    "--env-file", str(args.production_env.expanduser().resolve(strict=True)),
+                ]
+            path = create_backup(args.directory, [*compose, "exec", "-T", "db"])
             print(f"Backup verified and saved in {path}")
         else:
-            with restored_database(args.directory):
+            with restored_database(args.directory, image=args.postgres_image):
                 print("SHA-256 verified and archive restored in one transaction.")
             print("Isolated PostgreSQL removed.")
     except BackupError as exc:

@@ -11,6 +11,8 @@ BASE = {
     "auth_secret": "development-only-change-before-production",
     "mail_mode": "smtp",
     "smtp_starttls": False,
+    "smtp_username": "test-smtp-user",
+    "smtp_password": "test-smtp-password",
     "session_idle_days": 7,
     "session_absolute_days": 30,
     "verify_ttl_hours": 24,
@@ -33,6 +35,10 @@ def test_production_config_fails_closed_and_cookie_prefixes():
     with pytest.raises(ValueError, match="Production requires"):
         settings(app_env='production', public_origin='https://myway.example',
                  auth_secret='a'*64, smtp_starttls=True, mail_mode='file')
+    assert production.registration_enabled is False
+    with pytest.raises(ValueError, match="Production requires private"):
+        settings(app_env="production", public_origin="https://myway.example",
+                 auth_secret="a"*64, smtp_starttls=True, smtp_password="")
     assert production.session_cookie=='__Host-myway_session'
     assert production.csrf_cookie=='__Host-myway_csrf'
     with pytest.raises(ValueError):

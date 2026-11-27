@@ -228,3 +228,10 @@ The migration checks that the specified row is the only layout, is the
 default `Main`, and that the workspace has no nodes, edges, annotations,
 or saved positions. It records the layout's origin. The import transaction
 rechecks eligibility and replaces the layout only when the import succeeds.
+
+## Product backlog
+
+- **Node & Edge Types Review** — Deferred until feedback from initial testers
+  is available. Review the established dictionaries against observed usage
+  and gather evidence for any proposed changes. Schedule redesign and any
+  compatibility or migration work as a separate product decision after Stage 24.

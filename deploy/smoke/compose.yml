@@ -1,0 +1,21 @@
+services:
+  caddy:
+    environment:
+      PUBLIC_ORIGIN: https://localhost
+  api:
+    environment:
+      SSL_CERT_FILE: /smoke/smtp.crt
+    volumes:
+      - ${SMOKE_DIR:?Set SMOKE_DIR}/smtp.crt:/smoke/smtp.crt:ro
+    networks: [proxy, database, mail]
+  smtp:
+    platform: linux/amd64
+    image: python:3.13.18-slim-bookworm@sha256:f0fa218d5b06f9b9235024fa061cde2cb141f726de52134471053d2d9b5324a3
+    command: ["python", "/sink.py"]
+    volumes:
+      - ./deploy/smoke/smtp_sink.py:/sink.py:ro
+      - ${SMOKE_DIR:?Set SMOKE_DIR}:/smoke
+    networks: [mail]
+networks:
+  mail:
+    internal: true

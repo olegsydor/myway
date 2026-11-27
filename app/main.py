@@ -3,6 +3,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.routers.nodes import router as nodes_router
 from app.routers.edges import router as edges_router
@@ -23,6 +24,7 @@ settings = get_settings()
 app = FastAPI(
     title="My Way API",
     version="0.1.0",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 app.include_router(edges_router)
 app.include_router(nodes_router)
@@ -37,7 +39,16 @@ app.include_router(edge_types_router)
 async def health(
     session: AsyncSession = Depends(get_db_session),
 ):
-    await session.execute(text("select 1"))
+    if settings.is_production:
+        try:
+            revision = await session.scalar(text("select version_num from alembic_version limit 1"))
+        except (SQLAlchemyError, OSError, TimeoutError):
+            await session.rollback()
+            revision = None
+        if revision is None:
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+    else:
+        await session.execute(text("select 1"))
 
     return {
         "status": "ok",

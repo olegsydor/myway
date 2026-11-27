@@ -1,0 +1,116 @@
+name: myway-prod
+
+x-app-env: &app-env
+  APP_ENV: production
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://mywaygraph.com}
+  AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
+  REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
+  MAIL_MODE: smtp
+  SMTP_STARTTLS: "true"
+  SMTP_HOST: ${SMTP_HOST:-smtp-relay.brevo.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_FROM: ${SMTP_FROM:-MyWay <noreply@mywaygraph.com>}
+  SMTP_USERNAME: ${SMTP_USERNAME:?Set SMTP_USERNAME}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+  POSTGRES_DB: myway
+  POSTGRES_HOST: db
+
+x-backend: &backend
+  platform: linux/amd64
+  image: myway/backend:${MYWAY_RELEASE:?Set MYWAY_RELEASE}
+  build:
+    context: .
+    dockerfile: Dockerfile.prod
+  mem_limit: 768m
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    platform: linux/amd64
+    image: postgres:17@sha256:97fb53376be3e4fb1a8a61421daa69dcc3bf2fa39bda3259f5245f9a455af1a9
+    restart: unless-stopped
+    mem_limit: 1024m
+    entrypoint: ["/bin/sh", "/myway-db-entrypoint.sh"]
+    command: []
+    environment:
+      POSTGRES_DB: myway
+      POSTGRES_USER: myway_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_MIGRATION_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Set POSTGRES_MIGRATION_PASSWORD}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/db-entrypoint.sh:/myway-db-entrypoint.sh:ro
+      - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/10-myway.sh:ro
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    profiles: [migration]
+    environment:
+      <<: *app-env
+      POSTGRES_USER: myway_migrate
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Set POSTGRES_MIGRATION_PASSWORD}
+    networks: [database]
+    command: ["alembic", "upgrade", "head"]
+
+  api:
+    <<: *backend
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      POSTGRES_USER: myway_runtime
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    networks: [proxy, database]
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+
+  caddy:
+    platform: linux/amd64
+    image: myway/edge:${MYWAY_RELEASE:?Set MYWAY_RELEASE}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    restart: unless-stopped
+    mem_limit: 256m
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://mywaygraph.com}
+      CADDY_WWW_SITE: ${CADDY_WWW_SITE:-http://www.disabled.invalid}
+      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE:-}
+    ports:
+      - "${MYWAY_HTTP_BIND:-80}:80"
+      - "${MYWAY_HTTPS_BIND:-443}:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      proxy:
+        ipv4_address: 172.30.24.2
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  proxy:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.24.0/24
+          ip_range: 172.30.24.128/25
+  database:
+    internal: true

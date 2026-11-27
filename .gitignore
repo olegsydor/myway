@@ -17,3 +17,11 @@ alembic/versions/__pycache__/
 
 # Private local authentication mail
 .local-mail/
+
+.env.*
+!.env.example
+!.env.stage19.example
+!/.env.production.example
+*.secret
+*.secrets
+secrets/

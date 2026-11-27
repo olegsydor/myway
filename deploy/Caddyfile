@@ -1,0 +1,42 @@
+{
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$PUBLIC_ORIGIN} {
+	{$CADDY_TLS_DIRECTIVE}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+	}
+
+	@api path /api /api/*
+	handle @api {
+		route {
+			header Cache-Control no-store
+			request_body {
+				max_size 67108864
+			}
+			uri strip_prefix /api
+			# With no trusted_proxies at the edge, Caddy replaces client X-Forwarded-* values.
+			reverse_proxy tcp4/api:8000 {
+				header_up -Forwarded
+				header_up -X-Real-IP
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+{$CADDY_WWW_SITE} {
+	redir {$PUBLIC_ORIGIN}{uri} permanent
+}

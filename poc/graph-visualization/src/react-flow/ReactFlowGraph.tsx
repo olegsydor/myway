@@ -51,6 +51,7 @@ import {
   findBranchNodeIds,
 } from "../shared/graphAlgorithms";
 
+import { graphTypeOptions } from "./graphTypeOptions";
 import type { GraphSearchResult } from "../shared/graphSearch";
 
 import "@xyflow/react/dist/style.css";
@@ -987,12 +988,8 @@ const handleNodesChange = useCallback(
   const [newEdgeTypeId, setNewEdgeTypeId] = useState("");
   const [newEdgeDescription, setNewEdgeDescription] = useState("");
   const [newEdgeProperties, setNewEdgeProperties] = useState<PropertyRow[]>([]);
-  const nodeTypes = [
-    ...new Set(graphData.nodes.map((node) => node.type)),
-  ].sort();
-  const edgeTypes = [
-    ...new Set(graphData.edges.map((edge) => edge.type)),
-  ].sort();
+  const nodeTypes = graphTypeOptions(graphData.nodes, availableNodeTypes);
+  const edgeTypes = graphTypeOptions(graphData.edges, availableEdgeTypes);
 
   const resetHighlighting = useCallback(() => {
     ordinaryTarget.current = null;

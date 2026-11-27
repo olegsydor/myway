@@ -1,0 +1,12 @@
+FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS build
+WORKDIR /frontend
+COPY poc/graph-visualization/package.json poc/graph-visualization/package-lock.json ./
+RUN npm ci
+COPY poc/graph-visualization/index.html poc/graph-visualization/tsconfig*.json poc/graph-visualization/vite.config.ts ./
+COPY poc/graph-visualization/public/ public/
+COPY poc/graph-visualization/src/ src/
+RUN npm run build
+
+FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /frontend/dist/ /srv/

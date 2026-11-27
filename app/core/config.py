@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -10,7 +11,7 @@ class Settings(BaseSettings):
 
     public_origin: str = "http://localhost:5173"
     auth_secret: str = "development-only-change-before-production"
-    registration_enabled: bool = True
+    registration_enabled: bool | None = None
     session_idle_days: int = 7
     session_absolute_days: int = 30
     verify_ttl_hours: int = 24
@@ -34,8 +35,14 @@ class Settings(BaseSettings):
             raise ValueError("MAIL_MODE must be smtp or file")
         if min(self.session_idle_days, self.session_absolute_days, self.verify_ttl_hours, self.reset_ttl_minutes) <= 0:
             raise ValueError("Auth lifetimes must be positive")
-        if self.is_production and (parsed.scheme != "https" or len(self.auth_secret) < 32 or self.auth_secret.startswith(("development", "replace", "change")) or self.mail_mode != "smtp" or not self.smtp_starttls):
+        if self.is_production and (parsed.scheme != "https" or len(self.auth_secret.strip()) < 32 or self.auth_secret.strip().lower().startswith(("development", "replace", "change")) or self.mail_mode != "smtp" or not self.smtp_starttls):
             raise ValueError("Production requires HTTPS, a private AUTH_SECRET, SMTP and STARTTLS")
+        if self.is_production:
+            for value in (self.smtp_username, self.smtp_password, self.postgres_password):
+                if not value.strip() or value.strip().lower().startswith(("replace", "change", "development")):
+                    raise ValueError("Production requires private database and SMTP credentials")
+        if self.registration_enabled is None:
+            self.registration_enabled = not self.is_production
         return self
 
     @property
@@ -56,6 +63,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        hide_input_in_errors=True,
     )
 
     @property
@@ -67,14 +75,14 @@ class Settings(BaseSettings):
         return self.app_env == "production"
 
     @property
-    def database_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://"
-            f"{self.postgres_user}:"
-            f"{self.postgres_password}@"
-            f"{self.postgres_host}:"
-            f"{self.postgres_port}/"
-            f"{self.postgres_db}"
+    def database_url(self) -> URL:
+        return URL.create(
+            "postgresql+asyncpg",
+            username=self.postgres_user,
+            password=self.postgres_password,
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=self.postgres_db,
         )
 
 

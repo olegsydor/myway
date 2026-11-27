@@ -10,3 +10,10 @@
 
 # Local verification/reset links must never enter an image
 .local-mail/
+**/.env
+**/.env.*
+**/.local-mail
+**/*.secret
+**/*.secrets
+**/secrets
+**/.git
